@@ -1,6 +1,6 @@
 import {execFileSync} from 'node:child_process';
 import {mkdir,writeFile} from 'node:fs/promises';
-const revision=process.argv[2] || 'b067bfd';
+const revision=process.argv[2] || 'cf7c075';
 const hash=execFileSync('git',['rev-parse','--verify',revision+'^{commit}'],{encoding:'utf8'}).trim();
 const directory=new URL('./.baseline/',import.meta.url);
 await mkdir(directory,{recursive:true});

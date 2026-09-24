@@ -1,6 +1,6 @@
 # FreshJS usability and state improvements
 
-Implemented on top of the first fixes commit, `b067bfd29b7de481db63aa69cb5a9964a54a52d2`, on `fix/runtime-and-benchmarks`. Changes remain local; nothing has been pushed to GitHub.
+Implemented on top of the first fixes commit, `b067bfd29b7de481db63aa69cb5a9964a54a52d2`, on `fix/runtime-and-benchmarks`. Published on GitHub with the same file trees: the first fixes commit is `cf7c0754b8a9134b20c0a9265e6d5b9c907b9e20` and the usability/state commit is `d08a5c5b440c2d5d576de6eaea517e5ef302d425`. GitHub API publication assigned new commit IDs; the measurements below retain their original local IDs and source hashes. Reproduction commands use the published baseline.
 
 ## Delivered features
 

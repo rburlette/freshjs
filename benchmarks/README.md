@@ -110,7 +110,7 @@ callback demo support no-eval CSP, but that table adapter has not been converted
 ## Comparing a runtime change with the previous revision
 
 ```sh
-node benchmarks/prepare-baseline.mjs b067bfd
+node benchmarks/prepare-baseline.mjs cf7c075
 LIBRARIES=fresh-before,fresh SAMPLES=9 WARMUPS=2 npm run benchmark
 ```
 
