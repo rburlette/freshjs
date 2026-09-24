@@ -5,8 +5,9 @@ export async function createAdapter(name, mount) {
   const state = {rows: [], selected: null};
   const select = id => {state.selected = id; return commit();};
   const remove = id => {state.rows = state.rows.filter(row => row.id !== id); return commit();};
-  if(name === 'fresh') {
-    await import('./fresh-table.js');
+  if(name === 'fresh' || name === 'fresh-before') {
+    if(name === 'fresh-before') await import('./.baseline/fresh-table.js');
+    else await import('./fresh-table.js');
     host = document.createElement('fresh-benchmark');
     host.select = select; host.remove = remove;
     root = host.shadowRoot;

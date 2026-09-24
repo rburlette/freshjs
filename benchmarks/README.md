@@ -102,5 +102,21 @@ npm run bench -- --framework keyed/freshjs keyed/preact keyed/vue --chromeBinary
 
 Build the chosen baselines first following the upstream instructions. A full suite run can
 be lengthy. Passing `isKeyed` validates its structural/keyed tests, not the complete CPU,
-memory, startup, CSP, and release submission gates. FreshJS currently requires `unsafe-eval`
-and will not pass the upstream no-eval CSP check. No benchmark entry has been submitted upstream.
+memory, startup, CSP, and release submission gates. The exported table still uses string expressions and requires `unsafe-eval`; it will
+not pass the upstream no-eval CSP check. The separate `fresh-csp.js` entry point and
+callback demo support no-eval CSP, but that table adapter has not been converted. No benchmark entry has been submitted upstream.
+
+
+## Comparing a runtime change with the previous revision
+
+```sh
+node benchmarks/prepare-baseline.mjs b067bfd
+LIBRARIES=fresh-before,fresh SAMPLES=9 WARMUPS=2 npm run benchmark
+```
+
+The helper materializes the selected historical standalone runtime/table adapter under
+an ignored `.baseline` directory. The default baseline is the first fixes commit. Every
+page imports only the version under measurement; validation and rotated ordering are
+unchanged. Retain the JSON output, which includes source hashes for the working runtime.
+This baseline helper expects a revision with standalone `fresh.js` and the table adapter.
+See [USABILITY-RESULTS.md](USABILITY-RESULTS.md) for the current feature-change report.

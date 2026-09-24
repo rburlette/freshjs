@@ -14,8 +14,11 @@ const url = `http://127.0.0.1:${server.address().port}/benchmarks/`;
 let browser;
 const result = {date:new Date().toISOString(), samples, warmups, metric:'DOM commit and DOM commit + forced layout (ms); excludes data generation, network, parse, paint, and validation', node:process.version, os:`${platform()} ${release()}`, cpu:cpus()[0]?.model, cpuCount:cpus().length, args, libraries:{}, results:{}};
 try {
-  result.commit = execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
-  result.dirty = Boolean(execFileSync('git',['status','--porcelain'],{encoding:'utf8'}).trim());
+  try {
+    const options = {encoding:'utf8',stdio:['ignore','pipe','ignore']};
+    result.commit = execFileSync('git',['rev-parse','HEAD'],options).trim();
+    result.dirty = Boolean(execFileSync('git',['status','--porcelain'],options).trim());
+  } catch { result.commit = null; result.dirty = null; }
   result.sourceSHA256 = {};
   for(const file of ['fresh.js','benchmarks/adapters.js','benchmarks/harness.js','benchmarks/data.js','package-lock.json'])
     result.sourceSHA256[file] = createHash('sha256').update(await readFile(new URL('../'+file,import.meta.url))).digest('hex');
@@ -23,7 +26,7 @@ try {
   browser = await chromium.launch({headless:true,executablePath:process.env.CHROMIUM_PATH,args});
   result.browser = browser.version();
   for(const name of libraries) {
-    result.libraries[name] = ['preact','vue'].includes(name) ? JSON.parse(await readFile(new URL('../node_modules/'+name+'/package.json',import.meta.url),'utf8')).version : name === 'fresh' ? result.commit : 'handwritten keyed DOM reference';
+    result.libraries[name] = ['preact','vue'].includes(name) ? JSON.parse(await readFile(new URL('../node_modules/'+name+'/package.json',import.meta.url),'utf8')).version : name === 'fresh' ? result.commit || 'unversioned source; see sourceSHA256' : name === 'fresh-before' ? (await readFile(new URL('./.baseline/revision.txt',import.meta.url),'utf8')).trim() : 'handwritten keyed DOM reference';
     result.results[name] = {};
   }
   // Rotate library order between rounds to reduce systematic order/thermal bias.

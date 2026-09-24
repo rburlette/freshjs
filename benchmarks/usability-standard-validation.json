@@ -1,0 +1,7 @@
+{
+  "date": "2026-09-24T15:34:57.124Z",
+  "passed": true,
+  "upstreamCommit": "f2df01a8679de05225c32714ca8cecbea3d78c5d",
+  "runtimeSHA256": "ee4c2489d943d6dfce7648b59992a4120ba983bd09d63f47a28b6511d7450dd6",
+  "output": "args {\n  _: [\n    '/opt/codex/runtimes/codex-primary-runtime/dependencies/node/bin/node',\n    '/workspace/scratch/6ad7a1a844c8/js-framework-benchmark/webdriver-ts/dist/isKeyed.js',\n    'keyed/freshjs'\n  ],\n  headless: true,\n  chromeBinary: '/tmp/chromium',\n  'chrome-binary': '/tmp/chromium',\n  '$0': 'dist/isKeyed.js'\n}\nHEADLESS*** true\nargs {\n  _: [\n    '/opt/codex/runtimes/codex-primary-runtime/dependencies/node/bin/node',\n    '/workspace/scratch/6ad7a1a844c8/js-framework-benchmark/webdriver-ts/dist/isKeyed.js',\n    'keyed/freshjs'\n  ],\n  headless: true,\n  chromeBinary: '/tmp/chromium',\n  'chrome-binary': '/tmp/chromium',\n  '$0': 'dist/isKeyed.js'\n} allArgs [ 'keyed/freshjs' ]\nFrameworks that will be checked freshjs-vdevelopment-keyed\n*** headless true\nfreshjs-vdevelopment-keyed is keyed for 'run benchmark' and keyed for 'remove row benchmark' and keyed for 'swap rows benchmark' . It'll appear as keyed in the results\n"
+}

@@ -8,7 +8,8 @@
     "serve": "node scripts/server.mjs",
     "benchmark": "node benchmarks/run.mjs",
     "size": "node scripts/size.mjs",
-    "benchmark:mount": "node benchmarks/mount.mjs"
+    "benchmark:mount": "node benchmarks/mount.mjs",
+    "build": "node scripts/build.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.58.2",

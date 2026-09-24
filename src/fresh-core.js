@@ -1,0 +1,291 @@
+// Shared renderer. This module does not compile strings into JavaScript.
+const templates = new WeakMap();
+const emptyScope = Object.freeze(Object.create(null));
+const freshBrand = Symbol.for('freshjs.element');
+const custom = node => node.namespaceURI === 'http://www.w3.org/1999/xhtml' && node.localName.includes('-');
+
+export function html(strings, ...bindings) {
+	if(bindings.some(value => typeof value !== 'function'))
+		throw new TypeError('FreshJS html substitutions must be functions: html`Hello ${self => self.name}`.');
+	return {source: strings.reduce((text, part, i) => text + (i ? '{{__fresh' + (i - 1) + '__}}' : '') + part, ''), bindings};
+}
+
+function diagnostic(owner, location, error) {
+	return new Error('FreshJS <' + owner + '> ' + location + ': ' + error.message, {cause: error});
+}
+
+class Template {
+	constructor(root, owner, compile, bindings = [], names = []) {
+		this.root = root;
+		this.owner = owner;
+		this.compile = compile;
+		this.bindings = bindings;
+		this.names = names;
+		this.factories = [];
+		this.walk(root, []);
+	}
+
+	expression(source, location, names = this.names) {
+		const marker = source.trim().match(/^(?:\{\{)?__fresh(\d+)__(?:\}\})?$/);
+		let evaluate;
+		try {
+			evaluate = marker ? this.bindings[Number(marker[1])] : this.compile(source, names);
+			if(typeof evaluate !== 'function') throw new Error('Unknown template callback.');
+		} catch(error) { throw diagnostic(this.owner, location, error); }
+		return (self, scope) => {
+			try { return evaluate(self, scope); }
+			catch(error) { throw diagnostic(this.owner, location, error); }
+		};
+	}
+
+	factory(path, create) {
+		// Resolve once per clone; never walk the DOM on a refresh.
+		this.factories.push((root, self) => {
+			let node = root;
+			for(const index of path) node = node.childNodes[index];
+			return create(node, self);
+		});
+	}
+
+	walk(node, path) {
+		if(node.nodeType === 3) {
+			const source = node.nodeValue;
+			if(!source.includes('{{')) return;
+			const parts = [], pattern = /\{\{([\s\S]*?)\}\}/g;
+			let offset = 0, match;
+			while((match = pattern.exec(source))) {
+				parts.push(source.slice(offset, match.index));
+				parts.push(this.expression(match[1], 'text {{' + match[1] + '}}'));
+				offset = pattern.lastIndex;
+			}
+			if(source.slice(offset).includes('{{')) throw diagnostic(this.owner, 'text', new Error('Unclosed {{ expression }}.'));
+			parts.push(source.slice(offset));
+			node.nodeValue = '';
+			const evaluate = parts.length === 3 && !parts[0] && !parts[2] ? parts[1] : (self, scope) => {
+				let text = '';
+				for(const part of parts) text += typeof part === 'function' ? part(self, scope) ?? '' : part;
+				return text;
+			};
+			this.factory(path, (node, self) => new ValueBinding(node, self, evaluate, 'text'));
+			return;
+		}
+		if(node.nodeType === 1) {
+			if(['style', 'script', 'template'].includes(node.localName)) return;
+			const loop = node.getAttribute('fjs-for'), condition = node.getAttribute('fjs-if');
+			if(loop !== null && condition !== null)
+				throw new Error('Put fjs-if and fjs-for on separate, nested elements.');
+			if(loop !== null || condition !== null) {
+				const directive = loop !== null ? 'fjs-for' : 'fjs-if';
+				const anchor = document.createComment(directive);
+				node.replaceWith(anchor);
+				node.removeAttribute(directive);
+				if(loop !== null) {
+					const match = loop.match(/^\s*(?:([A-Za-z_$][\w$]*)|\(\s*([A-Za-z_$][\w$]*)\s*,\s*([A-Za-z_$][\w$]*)\s*\))\s+in\s+([\s\S]+)$/);
+					const item = match ? match[1] || match[2] : 'item', index = match?.[3] || 'index';
+					if(item === index) throw diagnostic(this.owner, directive, new Error('Item and index names must differ.'));
+					const names = [...new Set([...this.names, item, index, 'index'])];
+					const evaluate = this.expression(match ? match[4] : loop, directive + '="' + loop + '"');
+					const keySource = node.getAttribute('fjs-key');
+					const key = keySource === null ? null : this.expression(keySource, 'fjs-key="' + keySource + '"', names);
+					node.removeAttribute('fjs-key');
+					const child = new Template(node, this.owner, this.compile, this.bindings, names);
+					this.factory(path, (node, self) => new ListBinding(node, self, evaluate, child, item, index, key));
+				} else {
+					const evaluate = this.expression(condition, 'fjs-if="' + condition + '"');
+					const child = new Template(node, this.owner, this.compile, this.bindings, this.names);
+					this.factory(path, (node, self) => new IfBinding(node, self, evaluate, child));
+				}
+				return;
+			}
+			if(node.hasAttribute('fjs-key')) throw diagnostic(this.owner, 'fjs-key', new Error('fjs-key requires fjs-for on the same element.'));
+			const values = [];
+			for(const attribute of [...node.attributes]) {
+				if(!attribute.name.startsWith('[') || !attribute.name.endsWith(']')) continue;
+				const property = attribute.name.startsWith('[.');
+				const name = attribute.name.slice(property ? 2 : 1, -1).replace(property ? /-([a-z])/g : /$^/g, (_, letter) => letter.toUpperCase());
+				values.push({name, kind: property ? 'property' : 'attribute', evaluate: this.expression(attribute.value, attribute.name + '="' + attribute.value + '"')});
+				node.removeAttribute(attribute.name);
+			}
+			// Structural children (e.g. <option>) refresh before parent properties.
+			for(let i = 0; i < node.childNodes.length; i++) this.walk(node.childNodes[i], [...path, i]);
+			for(const value of values) this.factory(path, (node, self) => new ValueBinding(node, self, value.evaluate, value.kind, value.name));
+			if(custom(node)) this.factory(path, (node, self) => new ChildBinding(node, self));
+			return;
+		}
+		for(let i = 0; i < node.childNodes.length; i++) this.walk(node.childNodes[i], [...path, i]);
+	}
+
+	createInstance(self) {
+		const element = document.importNode(this.root, true);
+		const binders = this.factories.map(create => create(element, self));
+		return {element, binders, refresh(scope = emptyScope) { for(const binding of binders) binding.refresh(scope); }};
+	}
+}
+
+class ValueBinding {
+	constructor(node, self, evaluate, kind, name) {
+		Object.assign(this, {node, self, evaluate, kind, name});
+		this.waiting = kind === 'property' && custom(node) && !customElements.get(node.localName);
+		this.form = kind === 'property' && ['input', 'textarea', 'select', 'option'].includes(node.localName);
+	}
+	refresh(scope) {
+		const {node, kind, name} = this;
+		// Do not create expando properties which can shadow late-upgraded setters.
+		if(this.waiting) {
+			if(!customElements.get(node.localName)) return;
+			this.waiting = false;
+		}
+		const value = this.evaluate(this.self, scope) ?? (kind === 'text' ? '' : null);
+		const formChanged = this.form && (
+			(name === 'value' && node.value !== String(value ?? '')) ||
+			((name === 'checked' || name === 'selected') && node[name] !== Boolean(value)));
+		if(!this.initialized || !Object.is(value, this.previous) || formChanged) {
+			try {
+				if(kind === 'text') node.nodeValue = value;
+				else if(kind === 'property') node[name] = value;
+				else if(value === null) node.removeAttribute(name);
+				else node.setAttribute(name, value);
+			} catch(error) { throw diagnostic(this.self.localName, kind + ' ' + name, error); }
+			this.previous = value;
+			this.initialized = true;
+		}
+	}
+}
+
+class ChildBinding {
+	constructor(node, self) {
+		this.node = node;
+		node._freshOwner = self;
+		if(!customElements.get(node.localName)) {
+			// An undefined tag must not retain a removed parent indefinitely.
+			const owner = new WeakRef(self), child = new WeakRef(node);
+			customElements.whenDefined(node.localName).then(() => {
+				const element = child.deref();
+				if(element) customElements.upgrade(element);
+				owner.deref()?.requestRefresh();
+			});
+		}
+	}
+	refresh() { if(this.node[freshBrand]) this.node.refresh(); }
+}
+
+class IfBinding {
+	constructor(node, self, evaluate, template) { Object.assign(this, {node, self, evaluate, data: template.createInstance(self)}); }
+	refresh(scope) {
+		const visible = Boolean(this.evaluate(this.self, scope));
+		if(visible) this.data.refresh(scope);
+		if(visible !== this.visible) {
+			if(visible) this.node.before(this.data.element);
+			else this.data.element.remove();
+			this.visible = visible;
+		}
+	}
+}
+
+class ListBinding {
+	constructor(node, self, evaluate, template, item, index, key) {
+		Object.assign(this, {node, self, evaluate, template, item, index, key, rows: []});
+		if(key) this.keyedRows = new Map();
+	}
+	scope(parent, value, index) {
+		const scope = Object.create(parent);
+		scope[this.item] = value;
+		scope[this.index] = index;
+		scope.index = index;
+		return scope;
+	}
+	refresh(parent) {
+		const values = this.evaluate(this.self, parent) ?? [];
+		if(!Array.isArray(values)) throw diagnostic(this.self.localName, 'fjs-for', new TypeError('Expected an array, null or undefined.'));
+		if(this.key) { this.refreshKeyed(values, parent); return; }
+		for(let i = 0; i < values.length; i++) {
+			const row = this.rows[i] || (this.rows[i] = this.template.createInstance(this.self));
+			row.refresh(this.scope(parent, values[i], i));
+			if(!row.element.parentNode) this.node.before(row.element);
+		}
+		for(let i = values.length; i < this.rows.length; i++) this.rows[i].element.remove();
+		this.rows.length = values.length;
+	}
+	refreshKeyed(values, parent) {
+		const next = new Map(), scopes = [];
+		for(let i = 0; i < values.length; i++) {
+			const scope = this.scope(parent, values[i], i), key = this.key(this.self, scope);
+			if(next.has(key)) throw new Error('Duplicate fjs-key: ' + String(key));
+			next.set(key, null);
+			scopes.push(scope);
+		}
+		let i = 0;
+		for(const key of next.keys()) {
+			const row = this.keyedRows.get(key) || this.template.createInstance(this.self);
+			row.refresh(scopes[i++]);
+			next.set(key, row);
+		}
+		for(const [key, row] of this.keyedRows) if(!next.has(key)) row.element.remove();
+		const rows = [...next.values()], parentNode = this.node.parentNode;
+		let head = this.rows.find(row => row.element.parentNode === parentNode)?.element || this.node;
+		let tail = this.node.previousSibling, start = 0, end = rows.length - 1;
+		const move = (element, anchor) => {
+			if(element.nextSibling === anchor && element.parentNode === parentNode) return;
+			if(parentNode.moveBefore && element.parentNode === parentNode) parentNode.moveBefore(element, anchor);
+			else parentNode.insertBefore(element, anchor);
+		};
+		while(start <= end) {
+			const first = rows[start].element, last = rows[end].element;
+			if(first === head) { head = head.nextSibling; start++; }
+			else if(last === tail) { tail = tail.previousSibling; end--; }
+			else if(last === head) { const nextHead = head.nextSibling; move(head, tail.nextSibling); head = nextHead; end--; }
+			else if(first === tail) { const nextTail = tail.previousSibling; move(tail, head); tail = nextTail; start++; }
+			else { move(first, head); start++; }
+		}
+		this.rows = rows;
+		this.keyedRows = next;
+	}
+}
+
+export class freshElement extends HTMLElement {
+	static compileExpression() { throw new Error('String expressions require fresh.js; use html callbacks with fresh-csp.js.'); }
+	constructor(template = '') {
+		super();
+		this[freshBrand] = true;
+		if(!templates.has(this.constructor)) {
+			const node = document.createElement('template');
+			node.innerHTML = typeof template === 'string' ? template : template.source;
+			templates.set(this.constructor, new Template(node.content, this.localName, this.constructor.compileExpression, template.bindings));
+		}
+		this.templateInstance = templates.get(this.constructor).createInstance(this);
+		this.attachShadow({mode: 'open'}).append(this.templateInstance.element);
+		this.context = {};
+		this._mounts = new Map();
+		this._mounted = false;
+	}
+	connectedCallback() {
+		this._mounted = true;
+		for(const [setup, cleanup] of this._mounts) if(cleanup === null) this._mounts.set(setup, setup() || (() => {}));
+		if(this._freshOwner) this._freshOwner.requestRefresh();
+		else this.requestRefresh();
+	}
+	connectedMoveCallback() { /* Moving within a document does not end the mount. */ }
+	disconnectedCallback() {
+		this._mounted = false;
+		this.refreshPending = false;
+		const errors = [];
+		for(const [setup, cleanup] of this._mounts) {
+			this._mounts.set(setup, null);
+			try { cleanup?.(); } catch(error) { errors.push(error); }
+		}
+		if(errors.length) throw new AggregateError(errors, 'FreshJS cleanup failed');
+	}
+	onMount(setup) {
+		if(typeof setup !== 'function') throw new TypeError('onMount requires a setup function.');
+		const entry = () => setup();
+		this._mounts.set(entry, this._mounted ? entry() || (() => {}) : null);
+		return () => { const cleanup = this._mounts.get(entry); this._mounts.delete(entry); cleanup?.(); };
+	}
+	requestRefresh() {
+		if(!this.refreshPending) {
+			this.refreshPending = true;
+			queueMicrotask(() => { if(this.refreshPending) this.refresh(); });
+		}
+	}
+	refresh() { this.refreshPending = false; this.templateInstance.refresh(); }
+}
