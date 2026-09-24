@@ -1,0 +1,5 @@
+node_modules/
+test-results/
+playwright-report/
+benchmarks/results.local.json
+benchmarks/mount.local.json

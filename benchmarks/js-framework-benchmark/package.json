@@ -1,0 +1,16 @@
+{
+  "name": "js-framework-benchmark-freshjs",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {"build-prod": "node -e \"console.log('Native ES modules: no build required')\""},
+  "js-framework-benchmark": {
+    "frameworkVersion": "development",
+    "frameworkHomeURL": "https://github.com/rburlette/freshjs",
+    "language": "JavaScript",
+    "useShadowRoot": true,
+    "buttonsInShadowRoot": true,
+    "shadowRootName": "fresh-benchmark-app",
+    "includeInBuild": "index.html:app.js:fresh-table.js:data.js:fresh.js"
+  }
+}

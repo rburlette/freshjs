@@ -1,0 +1,18 @@
+{
+  "name": "freshjs-development",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test --project=chromium",
+    "test:all": "playwright test --project=chromium --project=firefox --project=webkit",
+    "serve": "node scripts/server.mjs",
+    "benchmark": "node benchmarks/run.mjs",
+    "size": "node scripts/size.mjs",
+    "benchmark:mount": "node benchmarks/mount.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.58.2",
+    "preact": "10.29.8",
+    "vue": "3.5.43"
+  }
+}

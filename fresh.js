@@ -1,4 +1,4 @@
-const freshTemplates = {};
+const freshTemplates = Object.create(null);
 const walkerNodeFilter = NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_COMMENT;
 const emptyArray = [];
 const zeroWidthString = '\u200B';
@@ -49,6 +49,9 @@ class freshTemplate {
 					this.bindTextNode(currentNode);
 					continue;
 				case 1:
+					if(currentNode.hasAttribute('fjs-if') && currentNode.hasAttribute('fjs-for'))
+						throw new Error('Put fjs-if and fjs-for on separate, nested elements.');
+
 					var factory =
 						currentNode.hasAttribute('fjs-if') ? ifBinderFactory :
 						currentNode.hasAttribute('fjs-for') ? forBinderFactory : null;
@@ -104,7 +107,7 @@ class freshTemplate {
 	}
 
 	createInstance(thisArg) {
-		return new freshTemplateInstance(this.rootNode.cloneNode(true), thisArg, this.factories);
+		return new freshTemplateInstance(document.importNode(this.rootNode, true), thisArg, this.factories);
 	}
 }
 
@@ -163,8 +166,14 @@ class ifBinderFactory extends childBinderFactory {
 
 class forBinderFactory extends childBinderFactory {
 	constructor(element, nodeFunction, fieldName) {
-		let evalInfo = element.getAttribute('fjs-for').split(' in ', 2);
-		super(forBinder, element, nodeFunction, evalInfo[evalInfo.length - 1], fieldName, evalInfo.length === 2 ? evalInfo[0] : 'item', 'fjs-for');
+		const expression = element.getAttribute('fjs-for');
+		const match = expression.match(/^\s*([A-Za-z_$][\w$]*)\s+in\s+([\s\S]+)$/);
+		const itemName = match ? match[1] : 'item';
+		const key = element.getAttribute('fjs-key');
+		element.removeAttribute('fjs-key');
+		super(forBinder, element, nodeFunction, match ? match[2] : expression, fieldName, itemName, 'fjs-for');
+		if(key !== null)
+			this.data.keyFunction = new Function(itemName, 'index', 'return (' + key + ');');
 	}
 }
 
@@ -201,7 +210,10 @@ class propertyBinder extends binder {
 	}
 
 	hasChanged(newValue) {
-		return typeof this.oldValue !== 'function' && this.oldValue !== newValue;
+		// Form controls can change independently of the model between refreshes.
+		return this.oldValue !== newValue ||
+			(this.propertyName === 'value' && this.node.value !== String(newValue ?? '')) ||
+			((this.propertyName === 'checked' || this.propertyName === 'selected') && this.node[this.propertyName] !== Boolean(newValue));
 	}
 
 	update(newValue) {
@@ -256,26 +268,92 @@ class forBinder extends binder {
 	constructor(element, valueFunction, thisArg, template) {
 		super(element, valueFunction, emptyArray, thisArg, template);
 		this.rows = [];
-		this.previousLength = 0;
+		if(template.keyFunction)
+			this.keyedRows = new Map();
 	}
 
 	refresh(item, index) {
-		let newValue = this.valueFunction(item, index);
-
-		for(let i = 0; i < newValue.length; i++) {
-			if(!this.rows[i])
-				this.rows[i] = this.data.createInstance(this.thisArg);
-
-			if(i >= this.previousLength)
-				this.node.parentNode.insertBefore(this.rows[i].element, this.node);
-
-			this.rows[i].refresh(newValue[i], i);
+		const values = this.valueFunction(item, index) ?? emptyArray;
+		if(this.keyedRows) {
+			this.refreshKeyed(values);
+			return;
 		}
 
-		for(let i = newValue.length; i < this.previousLength; i++)
-			this.rows[i].element.remove();
+		for(let i = 0; i < values.length; i++) {
+			let row = this.rows[i];
+			if(!row) {
+				row = this.rows[i] = this.data.createInstance(this.thisArg);
+				row.refresh(values[i], i);
+				this.node.parentNode.insertBefore(row.element, this.node);
+			} else {
+				row.refresh(values[i], i);
+			}
+		}
 
-		this.previousLength = newValue.length;
+		for(let i = values.length; i < this.rows.length; i++)
+			this.rows[i].element.remove();
+		this.rows.length = values.length;
+	}
+
+	refreshKeyed(values) {
+		const next = new Map();
+		// Validate all keys before changing the DOM or the previous row map.
+		for(let i = 0; i < values.length; i++) {
+			const key = this.data.keyFunction.call(this.thisArg, values[i], i);
+			if(next.has(key))
+				throw new Error('Duplicate fjs-key: ' + String(key));
+			next.set(key, null);
+		}
+
+		let i = 0;
+		for(const key of next.keys()) {
+			const row = this.keyedRows.get(key) || this.data.createInstance(this.thisArg);
+			row.refresh(values[i], i++);
+			next.set(key, row);
+		}
+		for(const [key, row] of this.keyedRows)
+			if(!next.has(key)) row.element.remove();
+
+		const rows = Array.from(next.values());
+		const parent = this.node.parentNode;
+		let head = this.rows.find(row => row.element.parentNode === parent)?.element || this.node;
+		let tail = this.node.previousSibling;
+		let start = 0, end = rows.length - 1;
+		const move = (element, anchor) => {
+			if(element.nextSibling === anchor && element.parentNode === parent) return;
+			// Preserve focus and custom-element state when the browser supports it.
+			if(parent.moveBefore && element.parentNode === parent)
+				parent.moveBefore(element, anchor);
+			else
+				parent.insertBefore(element, anchor);
+		};
+		// Match both ends before moving nodes. Swapping two distant rows should
+		// move those rows, not every row between them.
+		while(start <= end) {
+			const first = rows[start].element, last = rows[end].element;
+			if(first === head) {
+				head = head.nextSibling;
+				start++;
+			} else if(last === tail) {
+				tail = tail.previousSibling;
+				end--;
+			} else if(last === head) {
+				const nextHead = head.nextSibling;
+				move(head, tail.nextSibling);
+				head = nextHead;
+				end--;
+			} else if(first === tail) {
+				const nextTail = tail.previousSibling;
+				move(tail, head);
+				tail = nextTail;
+				start++;
+			} else {
+				move(first, head);
+				start++;
+			}
+		}
+		this.keyedRows = next;
+		this.rows = rows;
 	}
 }
 
@@ -308,7 +386,22 @@ export class freshElement extends HTMLElement {
 		this.context = {};
 	}
 
+	connectedCallback() {
+		// Wait for subclass fields and parent property bindings to be initialized.
+		this.requestRefresh();
+	}
+
+	requestRefresh() {
+		if(!this.refreshPending) {
+			this.refreshPending = true;
+			queueMicrotask(() => {
+				if(this.refreshPending) this.refresh();
+			});
+		}
+	}
+
 	refresh() {
+		this.refreshPending = false;
 		this.templateInstance.refresh();
 	}
 }
