@@ -13,7 +13,7 @@ const urlNames = new Set(['href', 'src', 'action', 'formaction', 'xlink:href']);
 
 function blockScriptUrl(name, value) {
 	// browsers ignore control characters and spaces in a URL scheme, so strip them before checking
-	if(urlNames.has(name) && /^javascript:/i.test(String(value).replace(/[\u0000- ]/g, '')))
+	if(urlNames.has(name) && /^javascript:/i.test(String(value).replace(/[\u0000-\u0020]/g, ''))) // eslint-disable-line no-control-regex
 		return 'unsafe:' + value;
 
 	return value;
