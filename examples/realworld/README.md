@@ -34,14 +34,22 @@ articles every time. Every sample user's password is `password123` (for example
 A few patterns fill gaps that FreshJS doesn't cover itself:
 
 * **Shared styles.** Components render in shadow DOM, where the page's stylesheet doesn't reach,
-  so every component adopts the same parsed copy of the theme (`adoptedStyleSheets`).
+  so every component adopts the same parsed copy of the theme (`adoptedStyleSheets`). The page
+  adopts it too, so it's downloaded once.
 * **Reacting to new properties.** A page has a `route` setter, which runs when the app passes it a
-  new route, and starts loading data.
+  new route, and starts loading data. A binding only sets a property when its value changes, so
+  the article list checks its inputs in `refresh()` instead: it must also reload when someone
+  signs in, while its path stays the same.
+* **Hidden pages keep their state.** `fjs-if` keeps what it hides and shows the same elements
+  again, refreshed. (React, and Vue's `v-if`, throw hidden parts away and build them again.)
 * **Data that arrives later.** Methods that load data call `this.refresh()` when it arrives,
   because that happens after the event that started it.
 * **Shared state.** The session and router keep a list of listeners; the app shell refreshes when
   either changes.
 * **Forms.** One `(input)` handler on the `<form>` stores each field under its `name`.
+* **A faster first load.** Without a build step, the browser finds each import only after the
+  file that imports it arrives. `index.html` lists the deepest files with `modulepreload`, so
+  they all download at once.
 
 ## Tests
 
