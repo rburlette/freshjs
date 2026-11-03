@@ -64,7 +64,8 @@ HTML lowercases attribute names, so write camelCase properties with dashes: `[.t
 ## Components
 
 * Pass data and callbacks to child components with properties: `<todo-item [.todo]="todo" [.on-delete]="() => this.deleteTodo(todo)"></todo-item>`.
-* Refreshing a component refreshes the child components in its template too, after their properties are set.
+* Refreshing a component refreshes the child components in its template too, after their properties are set. A child whose changes only affect itself can just call its own `this.refresh()`.
+* Template expressions can use `this` and global names, but not the imports in your module. To use an imported function, call it from a component method.
 * Import a child component at the top of the parent's file, so it is defined before the parent uses it.
 * Lists reuse rows by position. When the list changes, a row's elements show the new item that is now at that position.
 * The usual web component lifecycle callbacks work. If you override `connectedCallback`, call `super.connectedCallback()`.
@@ -82,6 +83,6 @@ HTML lowercases attribute names, so write camelCase properties with dashes: `[.t
 
 ## Examples and tests
 
-* `index.html`: the timecard, tic-tac-toe and hero editor demos. The timecard shows nested loops: days, then shifts, then services.
+* `index.html`: the timecard, tic-tac-toe and hero editor demos. The timecard is built from nested components (`ch-timecard` shows a `ch-timecard-day` for each day, which shows a `ch-timecard-shift` for each shift), with its rules as plain functions in `timecard-model.js`.
 * `todo-mvc/`: a todo app with a child component, editing, filters and saving to localStorage.
 * `test.html`: open it in a browser to run the tests.

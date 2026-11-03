@@ -17,6 +17,7 @@
 	<div id="scratch"></div>
 	<script type="module">
 		import {freshElement} from './fresh.js';
+		import * as timecard from './timecard-model.js';
 
 		const results = [];
 		let count = 0;
@@ -281,6 +282,83 @@
 
 		test('fjs-if and fjs-for on the same element are refused', () => {
 			throws(() => mount('<p fjs-if="true" fjs-for="this.rows">x</p>'), 'separate elements');
+		});
+
+		// The timecard example's rules are plain functions, so they can be tested without rendering anything.
+		// Each test starts from a fresh copy of the sample week.
+		function clock(date) {
+			return date.toTimeString().slice(0, 5);
+		}
+
+		function sampleShift(dayName) {
+			let day = timecard.createSampleWeek().find(day => day.name === dayName);
+			return {day, shift: day.shifts[0]};
+		}
+
+		test('timecard: the sample week and its time list', () => {
+			let {day, shift} = sampleShift('Monday');
+			equal(shift.duration, 5.75);
+			equal(day.times.length, 97);
+			equal(day.times[0].text, '12:00 AM');
+			equal(day.times[48].text, '12:00 PM');
+			equal(day.times[96].text, 'End of Day');
+		});
+
+		test('timecard: + lengthens a service and moves the ones after it', () => {
+			let {shift} = sampleShift('Monday');
+			timecard.addTime(shift, shift.jobs[0], 15);
+			equal(shift.jobs[0].duration, 1.75);
+			equal(clock(shift.jobs[1].in), '05:00');
+			equal(shift.duration, 6);
+		});
+
+		test('timecard: - stops at zero hours', () => {
+			let {shift} = sampleShift('Wednesday');
+			timecard.addTime(shift, shift.jobs[0], -90);
+			equal(shift.jobs[0].duration, 0);
+			equal(shift.duration, 0);
+		});
+
+		test('timecard: changing In moves the whole shift', () => {
+			let {shift} = sampleShift('Monday');
+			timecard.changeShiftIn(shift, new Date(2018, 4, 2, 2, 0));
+			equal(clock(shift.in) + '-' + clock(shift.out), '02:00-07:45');
+			equal(shift.duration, 5.75);
+		});
+
+		test('timecard: a shift moved past midnight ends at End of Day', () => {
+			let {shift} = sampleShift('Sunday');
+			timecard.changeShiftIn(shift, new Date(2018, 4, 1, 23, 0));
+			equal(shift.out.getTime(), shift.maxTime.getTime());
+			equal(shift.jobs.map(job => job.duration).join(), '0,1');
+		});
+
+		test('timecard: an earlier Out takes time from Companion first', () => {
+			let {shift} = sampleShift('Thursday');
+			timecard.changeShiftOut(shift, new Date(2018, 4, 5, 4, 0));
+			equal(shift.jobs.map(job => job.duration).join(), '0,0.75');
+			equal(clock(shift.out), '04:00');
+		});
+
+		test('timecard: a service can switch only to services the shift does not have', () => {
+			let {shift} = sampleShift('Sunday');
+			equal(timecard.getRemainingServices(shift).map(service => service.name).join(), 'Personal Care');
+			equal(timecard.getRemainingServices(shift, shift.jobs[0]).map(service => service.name).join(), 'Companion,Personal Care');
+		});
+
+		test('timecard: Add Service adds an hour of an unused service at the end', () => {
+			let {shift} = sampleShift('Sunday');
+			timecard.addService(shift);
+			let job = shift.jobs[2];
+			equal(job.service + ' ' + clock(job.in) + '-' + clock(job.out) + ' ' + job.isNew, '3 06:00-07:00 true');
+			equal(shift.duration, 3.75);
+		});
+
+		test('timecard: Add New Shift starts an hour after the last shift ends', () => {
+			let {day} = sampleShift('Friday');
+			timecard.addShift(day);
+			let shift = day.shifts[1];
+			equal(clock(shift.in) + '-' + clock(shift.out) + ' ' + shift.isNew, '05:45-06:45 true');
 		});
 
 		let list = document.getElementById('results');
