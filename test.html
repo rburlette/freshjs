@@ -376,6 +376,92 @@
 			equal(clock(shift.in) + '-' + clock(shift.out) + ' ' + shift.isNew, '05:45-06:45 true');
 		});
 
+
+		// After an event handler in a template runs, its component refreshes by itself.
+		test('auto refresh: an event handler refreshes its component', () => {
+			let element = mount('<button [.onclick]="() => this.count++">{{this.count}}</button>', function() { this.count = 0; });
+			element.shadowRoot.querySelector('button').click();
+			equal(text(element), '1');
+		});
+
+		test('auto refresh: an [.on-...] callback refreshes the parent that passed it', () => {
+			customElements.define('auto-child', class extends freshElement {
+				constructor() { super('<button [.onclick]="() => this.onPress()">go</button>'); }
+			});
+			let element = mount('<auto-child [.on-press]="() => this.count++"></auto-child><i>{{this.count}}</i>', function() { this.count = 0; });
+			element.shadowRoot.querySelector('auto-child').shadowRoot.querySelector('button').click();
+			equal(element.shadowRoot.querySelector('i').textContent, '1');
+		});
+
+		test('auto refresh: other function properties do not refresh (no loop when a child calls one while rendering)', () => {
+			let refreshes = 0;
+			customElements.define('auto-format', class extends freshElement {
+				constructor() { super('<b>{{this.format(1)}}</b>'); }
+			});
+			let element = mount('<auto-format [.format]="n => n + this.suffix"></auto-format>', function() {
+				this.suffix = '!';
+				let refresh = this.refresh;
+				this.refresh = function() { refreshes++; refresh.call(this); };
+			});
+			equal(element.shadowRoot.querySelector('auto-format').shadowRoot.textContent, '1!');
+			equal(refreshes, 1);
+		});
+
+		test('auto refresh: an on... callback called while rendering does not refresh again', () => {
+			let refreshes = 0;
+			customElements.define('auto-render-callback', class extends freshElement {
+				constructor() { super('<b>{{this.onRender()}}</b>'); }
+			});
+			let element = mount('<auto-render-callback [.on-render]="() => \'ok\'"></auto-render-callback>', function() {
+				let refresh = this.refresh;
+				this.refresh = function() { refreshes++; refresh.call(this); };
+			});
+			equal(element.shadowRoot.querySelector('auto-render-callback').shadowRoot.textContent, 'ok');
+			equal(refreshes, 1);
+		});
+
+		{
+			let element = mount('<button [.onclick]="async () => { await null; this.count++; }">{{this.count}}</button>', function() { this.count = 0; });
+			element.shadowRoot.querySelector('button').click();
+			let before = text(element);
+			await new Promise(resolve => setTimeout(resolve));
+			test('auto refresh: an async handler refreshes again when it finishes', () => {
+				equal(before + ' then ' + text(element), '0 then 1');
+			});
+		}
+
+		// Two sibling components showing the same shared data: by default an event refreshes only
+		// its own component, and refreshAll() refreshes the whole app.
+		{
+			let shared = {count: 0};
+			customElements.define('auto-sibling', class extends freshElement {
+				constructor() {
+					super('<button [.onclick]="() => this.add()">{{this.shared.count}}</button>');
+					this.shared = shared;
+				}
+				add() { shared.count++; }
+			});
+			customElements.define('auto-sibling-all', class extends freshElement {
+				constructor() {
+					super('<button [.onclick]="() => this.add()">{{this.shared.count}}</button>');
+					this.shared = shared;
+				}
+				add() { shared.count++; this.refreshAll(); }
+			});
+			let element = mount('<auto-sibling></auto-sibling><auto-sibling></auto-sibling><auto-sibling-all></auto-sibling-all>');
+			let [a, b, c] = [...element.shadowRoot.children].map(child => child.shadowRoot.querySelector('button'));
+
+			test('auto refresh: by default an event refreshes only its own component', () => {
+				a.click();
+				equal([a, b, c].map(button => button.textContent).join(), '1,0,0');
+			});
+
+			test('auto refresh: this.refreshAll() refreshes the whole app', () => {
+				c.click();
+				equal([a, b, c].map(button => button.textContent).join(), '2,2,2');
+			});
+		}
+
 		let list = document.getElementById('results');
 		for(let result of results) {
 			let item = document.createElement('li');

@@ -100,7 +100,7 @@ class todoApp extends freshElement {
 
 		this.todos = JSON.parse(localStorage.getItem(storageKey)) || [];
 		this.newTitle = '';
-		this.onHashChange = () => this.refresh();
+		this.onHashChange = () => this.refresh(); // a window listener, not a template event, so it refreshes itself
 	}
 
 	// normal web component lifecycle callbacks work; just call super.connectedCallback()
@@ -158,7 +158,6 @@ class todoApp extends freshElement {
 
 	save() {
 		localStorage.setItem(storageKey, JSON.stringify(this.todos));
-		this.refresh();
 	}
 }
 

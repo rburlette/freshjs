@@ -62,7 +62,6 @@ class chTimeCardDay extends freshElement {
 
     addShift() {
         timecard.addShift(this.day);
-        this.refresh();
     }
 }
 

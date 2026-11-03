@@ -23,7 +23,6 @@ class hero extends freshElement {
 
     onNameChange(value) {
         this.heroInfo.name = value;
-        this.refresh();
     }
 }
 

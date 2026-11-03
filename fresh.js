@@ -88,8 +88,11 @@ class freshTemplate {
 
 			element.removeAttribute(name);
 
-			if(name[1] === '.')
-				this.add(path, propertyBinder, value, {name: camelCase(name.slice(2, -1))});
+			if(name[1] === '.') {
+				let property = camelCase(name.slice(2, -1));
+				// [.onclick], [.on-delete] and other on... properties are event handlers: the component refreshes after them
+				this.add(path, propertyBinder, value, {name: property, isEvent: property.startsWith('on')});
+			}
 			else if(name.startsWith('[on'))
 				throw this.error(name + ' would turn a string into code. Use [.' + name.slice(1, -1) + ']="e => ..." for events.');
 			else
@@ -244,7 +247,14 @@ class propertyBinder extends binder {
 			// so [.onclick]="this.save" works and list rows never call a stale item's handler
 			let binder = this;
 			this.handler = value;
-			value = function() { return binder.handler.apply(binder.component, arguments); };
+			value = function() {
+				let result = binder.handler.apply(binder.component, arguments);
+
+				if(binder.factory.isEvent)
+					refreshAfterEvent(binder.component, result);
+
+				return result;
+			};
 		}
 
 		this.node[name] = blockScriptUrl(name, value ?? null);
@@ -302,6 +312,17 @@ class forBinder extends binder {
 	}
 }
 
+// After an event handler from a template runs, the component that owns the template refreshes, so
+// callbacks a parent passes down refresh the parent. A handler that returns a promise (an async
+// function) refreshes again when it resolves.
+function refreshAfterEvent(component, result) {
+	if(!component.refreshing) // events such as blur can fire while a refresh is changing the page
+		component.refresh();
+
+	if(result && typeof result.then === 'function')
+		result.then(() => component.refresh());
+}
+
 // Refreshes a child component after its properties are set.
 class componentBinder {
 	constructor(node, factory, component) {
@@ -344,8 +365,24 @@ export class freshElement extends HTMLElement {
 			this.refresh();
 	}
 
-	// Re-evaluates every binding and updates only what changed. Call it after you change data.
+	// Re-evaluates every binding and updates only what changed. Event handlers in templates call it
+	// for you; call it yourself after other changes, such as in a timer or a listener you added.
 	refresh() {
-		this.templateInstance.refresh(rootScope);
+		this.refreshing = true;
+		try {
+			this.templateInstance.refresh(rootScope);
+		} finally {
+			this.refreshing = false;
+		}
+	}
+
+	// Refreshes the top-level component this one is inside, and everything in it. Use it when you
+	// change data that components elsewhere on the page also show.
+	refreshAll() {
+		let top = this;
+		while(top.freshParent)
+			top = top.freshParent;
+
+		top.refresh();
 	}
 }

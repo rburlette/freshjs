@@ -152,7 +152,7 @@ const templateString = /*html*/`
 `;
 
 // One shift card. The day passes in [.shift], [.number] and [.times].
-// Changes only affect this shift, so it refreshes just itself.
+// Clicks here only change this shift, so the automatic refresh after each event updates just this card.
 class chTimeCardShift extends freshElement {
     constructor() {
         super(templateString);
@@ -192,37 +192,30 @@ class chTimeCardShift extends freshElement {
 
     changeIn(value) {
         timecard.changeShiftIn(this.shift, value);
-        this.refresh();
     }
 
     changeOut(value) {
         timecard.changeShiftOut(this.shift, value);
-        this.refresh();
     }
 
     addTime(job, minutes) {
         timecard.addTime(this.shift, job, minutes);
-        this.refresh();
     }
 
     addService() {
         timecard.addService(this.shift);
-        this.refresh();
     }
 
     changeService(job, value) {
         job.service = Number(value);
-        this.refresh();
     }
 
     changePayer(job, value) {
         job.payerId = Number(value);
-        this.refresh();
     }
 
     toggleDetails() {
         this.shift.showDetails = !this.shift.showDetails;
-        this.refresh();
     }
 }
 

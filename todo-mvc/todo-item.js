@@ -69,7 +69,7 @@ class todoItem extends freshElement {
 	startEditing() {
 		this.editing = true;
 		this.editText = this.todo.title;
-		this.refresh();
+		this.refresh(); // refresh now, so the edit box exists before focusing it
 		this.shadowRoot.querySelector('.edit').focus();
 	}
 
@@ -78,7 +78,6 @@ class todoItem extends freshElement {
 			this.finishEditing();
 		} else if(event.key === 'Escape') {
 			this.editing = false;
-			this.refresh();
 		}
 	}
 

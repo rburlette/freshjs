@@ -56,14 +56,11 @@ class tttGame extends freshElement {
             this.history = this.history.slice(0, this.stepNumber + 1);
 
         this.xIsNext = !this.xIsNext;
-
-        this.refresh();
     }
 
     jumpTo(step) {
         this.stepNumber = step;
         this.xIsNext = (step % 2) === 0;
-        this.refresh();
     }
 
     get statusMsg() {
