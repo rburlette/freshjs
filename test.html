@@ -92,6 +92,21 @@
 			equal(text(element), 'a1b2cd');
 		});
 
+		// splitting "Hi {{name}}, " into pieces must not throw off where later bindings point
+		test('bindings after split text land on the right elements', () => {
+			let element = mount('<p>Hi {{this.a}}, <i>one</i><b [title]="this.tip">two</b><u>three</u></p>',
+				function() { this.a = 'A'; this.tip = 'tip'; });
+			equal(text(element), 'Hi A, onetwothree');
+			equal(element.shadowRoot.querySelector('b').getAttribute('title'), 'tip');
+			equal(element.shadowRoot.querySelector('u').hasAttribute('title'), false);
+		});
+
+		test('a handler after split text is bound', () => {
+			let element = mount('<li>{{this.name}} <button [.onclick]="() => this.clicked = true">x</button></li>', function() { this.name = 'row'; });
+			element.shadowRoot.querySelector('button').click();
+			equal(element.clicked, true);
+		});
+
 		test('null and undefined render as empty text', () => {
 			let element = mount('<p>[{{this.missing}}][{{null}}]</p>');
 			equal(text(element), '[][]');
