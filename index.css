@@ -1,11 +1,11 @@
 html {
     box-sizing: border-box;
     height: 100%;
-  }
+}
 
 *, *:before, *:after {
     box-sizing: inherit;
-  }
+}
 
 body {
     font-family: -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -16,13 +16,23 @@ body {
     background-color: #fff;
     height: 100%;
     margin: 0;
+    padding: 0 24px 24px;
 }
 
-.icon {
-  display: inline-block;
-  width: 1em;
-  height: 1em;
-  stroke-width: 0;
-  stroke: currentColor;
-  fill: currentColor;
+header {
+    padding: 16px 0;
+    border-bottom: 1px solid #ddd;
+}
+
+header h1 {
+    margin: 0;
+    font-size: 28px;
+}
+
+header p {
+    margin: 4px 0 8px;
+}
+
+nav a {
+    margin-right: 16px;
 }

@@ -83,6 +83,14 @@ HTML lowercases attribute names, so write camelCase properties with dashes: `[.t
 
 ## Examples and tests
 
+To try them, serve the repository folder with any static web server and open it in your browser. For example:
+
+* Python: run `python3 -m http.server` in the folder, then open http://localhost:8000/
+* Node: run `npx http-server` in the folder, then open http://localhost:8080/
+* VS Code: open the folder and use the Live Server extension
+
+What's included:
+
 * `index.html`: the timecard, tic-tac-toe and hero editor demos. The timecard is built from nested components (`ch-timecard` shows a `ch-timecard-day` for each day, which shows a `ch-timecard-shift` for each shift), with its rules as plain functions in `timecard-model.js`.
 * `todo-mvc/`: a todo app with a child component, editing, filters and saving to localStorage.
 * `test.html`: open it in a browser to run the tests.
