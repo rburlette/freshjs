@@ -14,7 +14,6 @@ const templateString = /*html*/`
 class myApp extends freshElement {
     constructor() {
         super(templateString);
-        this.refresh();
     }
 }
 
