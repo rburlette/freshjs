@@ -97,17 +97,20 @@ HTML lowercases attribute names, so write camelCase properties with dashes: `[.t
 
 ## Examples and tests
 
-To try them, serve the repository folder with any static web server and open it in your browser. For example:
+The examples are in the [`examples`](examples) folder, one folder per example. To try them, serve the repository folder with any static web server, because the examples import `fresh.js` from the folder above them. For example:
 
-* Python: run `python3 -m http.server` in the folder, then open http://localhost:8000/
-* Node: run `npx http-server` in the folder, then open http://localhost:8080/
-* VS Code: open the folder and use the Live Server extension
+* Python: run `python3 -m http.server` in the folder, then open http://localhost:8000/examples/
+* Node: run `npx http-server` in the folder, then open http://localhost:8080/examples/
+* VS Code: open the folder, use the Live Server extension, and open `examples/index.html`
 
 What's included:
 
-* `index.html`: the timecard, tic-tac-toe and hero editor demos. The timecard is built from nested components (`ch-timecard` shows a `ch-timecard-day` for each day, which shows a `ch-timecard-shift` for each shift), with its rules as plain functions in `timecard-model.js`.
-* `todo-mvc/`: a todo app with a child component, editing, filters and saving to localStorage.
-* `test.html`: open it in a browser to run the tests.
+* [`examples/index.html`](examples/index.html): a page with the timecard, tic-tac-toe and hero editor demos.
+  * [`timecard`](examples/timecard): nested components (`ch-timecard` shows a `ch-timecard-day` for each day, which shows a `ch-timecard-shift` for each shift), with its rules as plain functions in `timecard-model.js`.
+  * [`tic-tac-toe`](examples/tic-tac-toe): a board component that sends events to its game.
+  * [`hero`](examples/hero): the Hero Editor from the Angular tutorial, shown at the top of this README.
+* [`examples/todo-mvc`](examples/todo-mvc): a todo app with a child component, editing, filters, keyed rows and saving to localStorage.
+* [`test.html`](test.html): open it in a browser to run the tests.
 
 ## License
 

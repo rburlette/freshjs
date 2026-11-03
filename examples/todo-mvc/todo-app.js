@@ -1,4 +1,4 @@
-import {freshElement} from '../fresh.js';
+import {freshElement} from '../../fresh.js';
 import './todo-item.js';
 
 const storageKey = 'freshjs-todos';

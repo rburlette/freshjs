@@ -1,7 +1,7 @@
-import {freshElement} from './fresh.js';
-import './ch-timecard.js';
-import './ttt-game.js';
-import './hero.js';
+import {freshElement} from '../fresh.js';
+import './timecard/ch-timecard.js';
+import './tic-tac-toe/ttt-game.js';
+import './hero/hero.js';
 
 const templateString = /*html*/`
 <style>
