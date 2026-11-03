@@ -1,12 +1,254 @@
 import {freshElement} from './fresh.js';
-import './ch-timecard-day.js';
+
 const templateString = /*html*/`
 <style>
-    :host {
+    :host, table {
+        width: 100%;
+    }
+
+    header {
+        background: #3d3d3d;
+        font-size: 12px;
+        color: #fff;
+        font-weight: bold;
+        text-align: center;
+    }
+
+    input[type="text"] {
+        width: 80px;
+    }
+
+    .needs, .shifts {
+        list-style-type: none;
+        padding: 0;
+        margin: 0;
+    }
+
+    .shifts > li {
+        margin: 4px 0;
+        border: 1px solid #3d3d3d;
+        padding: 0;
+        border-top-left-radius: 3px;
+        border-top-right-radius: 3px;
+    }
+
+    .shifts > li.is-new {
+        border: 1px solid #ff9900;
+    }
+
+    label {
+        display: block;
+        font-size: 12px;
+    }
+
+    table {
+        border-collapse: collapse;
+    }
+
+    th, td {
+        border: 1px solid lightgrey;
+        width: 14.28%;
+    }
+
+    td {
+        vertical-align: top;
+        padding: 0 4px;
+    }
+
+    tr:last-child {
+        text-align: center;
+        vertical-align: middle;
+    }
+
+    .flex-lr {
+        display: flex;
+        justify-content: space-between;
+    }
+
+    .flex-lr label {
+        padding: 0 3px;
+    }
+
+    .flex-lr select {
+        margin: 1px 2px;
+    }
+
+    .needs li[data-service="1"] {
+        background-color: #dbedf5;
+    }
+
+    .needs li[data-service="2"] {
+        background-color: #baf8d4;
+    }
+
+    .needs li[data-service="3"] {
+        background-color: #d1d1ff;
+    }
+
+    .needs li[data-new] {
+        border: 1px solid yellow;
+    }
+
+    select {
+        background: #ffffff;
+        border: 1px solid lightgrey;
+        font-size: 12px;
+    }
+
+    .changed {
+        background: rgba(255, 255, 0, 0.59);
+    }
+
+    .total .changed {
+        color: yellow;
+        background: inherit;
+    }
+
+    .date-header {
+        font-size: 12px;
+    }
+
+    .service {
+        background-color: inherit;
+        color: inherit;
+        border: none;
+        width: 100%;
+        border-bottom: 1px solid;
+        font-weight: bold;
+        font-size: 12px;
+    }
+
+    .service:disabled {
+        -webkit-appearance: none;
+    }
+
+    .total {
+        color: rgb(255, 255, 255);
+        background: #575757;
+        font-size: 11px;
+        font-weight: bold;
+    }
+
+    .close {
+        margin: 0 0 0 4px;
+        font-size: 9px;
+        padding: 1px 4px 0px 4px;
+        display: none;
+    }
+
+    .is-new .close {
+        display: block;
+    }
+
+    .add-new {
+        font-size: 12px;
+        display: block;
+        width: 100%;
+        margin: 4px 0;
+    }
+
+    .toolbar {
         display: flex;
     }
+
+    .toolbar button {
+        font-size: 12px;
+        flex: 0 1 50%;
+        padding: 1px;
+    }
+
+    .adj-container button {
+        font-size: 11px;
+        margin: 1px 0;
+        padding: 0px 5px;
+    }
+
+    .adj-container {
+        margin: 0 2px;
+        display: inline-flex;
+    }
 </style>
-<ch-timecard-day fjs-for="day in this.days" [.daydata]="day" [.services]="this.services" [.payers]="this.payers"></ch-timecard-day>
+<table>
+    <tr>
+        <th fjs-for="day in this.days">{{day.day}}</th>
+    </tr>
+    <tr>
+        <th fjs-for="day in this.days" class="date-header">{{this.formatDate(day.date)}}</th>
+    </tr>
+    <tr>
+        <td fjs-for="day in this.days">
+            <ul class="shifts">
+                <li fjs-for="shift in day.shifts">
+                    <header>Shift {{index + 1}}</header>
+                    <div class="flex-lr">
+                        <label>In:</label>
+                        <select [.value]="shift.in.toJSON()" [.onchange]="e => this.changeShiftIn(shift, e.target.value)" [class]="this.inClass(shift)">
+                            <option fjs-for="time in day.times" [.value]="time.value">{{time.text}}</option>
+                        </select>
+                    </div>
+
+                    <div class="flex-lr">
+                        <label>Out:</label>
+                        <select [.value]="shift.out.toJSON()" [.onchange]="e => this.changeShiftOut(shift, e.target.value)" [class]="this.outClass(shift)">
+                            <option fjs-for="time in day.times" [.value]="time.value" [.disabled]="this.isDisabled(time, shift)">{{time.text}} </option>
+                        </select>
+                    </div>
+                    <div class="total flex-lr">
+                        <label>Shift Total:</label>
+                        <label [class]="this.durationClass(shift)">{{shift.duration}}hrs</label>
+                    </div>
+                    <ol class="needs">
+                        <li fjs-for="job in shift.jobs" [data-service]="job.service" [data-new]="job.isNew">
+                            <div fjs-if="this.showDetails(shift, job)">
+                                <div class="flex-lr">
+                                    <label>Service: </label>
+                                    <select [.value]="job.service" [.disabled]="!job.isNew" [.onchange]="e => this.serviceOnChange(job, e.target.value)">
+                                        <option fjs-for="service in this.getRemainingServices(shift, job)" [.value]="service.value">{{service.name}}</option>
+                                    </select>
+                                </div>
+
+                                <div class="flex-lr">
+                                        <label>Payer:</label>
+                                        <select [.value]="job.payerId" [.onchange]="e => this.payerOnChange(job, e.target.value)" [.disabled]="!job.isNew">
+                                            <option fjs-for="payer in this.payers" [.value]="payer.value">{{payer.name}}</option>
+                                        </select>
+                                </div>
+                                <div class="flex-lr">
+                                    <label>Duration:</label>
+                                    <div class="adj-container">
+                                        <label [class]="this.durationClass(job)">{{job.duration}}hrs</label>
+                                        <button [.disabled]="shift.out.getTime() == shift.maxTime.getTime()" [.onclick]="() => this.addTime(job, shift, 900000)">+</button>
+                                        <button [.disabled]="job.duration == 0" [.onclick]="() => this.addTime(job, shift, -900000)">-</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div fjs-if="!this.showDetails(shift, job)">
+                                <div class="flex-lr">
+                                    <label>{{this.services[job.service - 1].name}}:</label>
+                                    <div class="adj-container">
+                                        <label [class]="this.durationClass(job)">{{job.duration}}hrs</label>
+                                        <button [.disabled]="shift.out.getTime() == shift.maxTime.getTime()" [.onclick]="() => this.addTime(job, shift, 900000)">+</button>
+                                        <button [.disabled]="job.duration == 0" [.onclick]="() => this.addTime(job, shift, -900000)">-</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </li>
+                    </ol>
+
+                    <div class="toolbar">
+                        <button [.onclick]="() => this.toggleDetails(shift)">{{shift.showDetails ? 'Hide' : 'Show'}} Details</button>
+                        <button [.disabled]="shift.jobs.length >= 3" [.onclick]="() => this.addService(shift)">Add Service</button>
+                    </div>
+                </li>
+            </ul>
+        </td>
+    </tr>
+    <tr>
+        <td fjs-for="day in this.days">
+            <button class="add-new" [.onclick]="() => this.addShift(day)">+ Add New Shift</button>
+        </td>
+    </tr>
+</table>
 `;
 
 
@@ -211,29 +453,29 @@ class chTimeCard extends freshElement {
         return (shift.showDetails || job.isNew);
     }
 
-    payerOnChange(item, value) {
-        item.payerId = value;
+    payerOnChange(job, value) {
+        job.payerId = Number(value);
     }
 
-    serviceOnChange(item, value) {
-        item.service = value;
-        this.boundRoot.refresh();
+    serviceOnChange(job, value) {
+        job.service = Number(value);
+        this.refresh();
     }
 
-    addTime(item, context, timeDiff) {
-        this.changeService(context.parent.item, item.service, timeDiff);
-        context.parent.item.out = this.calcShiftOut(context.parent.item);
-        context.parent.item.duration = this.calcDuration(context.parent.item);
-        this.boundRoot.refresh();
+    addTime(job, shift, timeDiff) {
+        this.changeService(shift, job.service, timeDiff);
+        shift.out = this.calcShiftOut(shift);
+        shift.duration = this.calcDuration(shift);
+        this.refresh();
     }
 
     toggleDetails(shift) {
         shift.showDetails = !shift.showDetails;
-        this.boundRoot.refresh();
+        this.refresh();
     }
 
-    isDisabled(item, context) {
-        return item.date.getTime() < context.parent.item.in.getTime();
+    isDisabled(time, shift) {
+        return time.date.getTime() < shift.in.getTime();
     }
 
     formatDate(date) {
@@ -338,7 +580,7 @@ class chTimeCard extends freshElement {
         shift.out = this.calcShiftOut(shift);
         shift.duration = this.calcDuration(shift);
 
-        this.boundRoot.refresh();
+        this.refresh();
     }
 
     changeShiftIn(shift, value) {
@@ -358,12 +600,12 @@ class chTimeCard extends freshElement {
 
         shift.duration = this.calcDuration(shift);
 
-        this.boundRoot.refresh();
+        this.refresh();
     }
 
     changeShiftOut(shift, value) {
         this.changeEndShift(shift, new Date(value));
-        this.boundRoot.refresh();
+        this.refresh();
     }
 
     inClass(shift){
@@ -463,6 +705,7 @@ class chTimeCard extends freshElement {
         newShift.duration = this.calcDuration(newShift);
 
         day.shifts.push(newShift);
+        this.refresh();
     }
 }
 

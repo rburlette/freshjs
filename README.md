@@ -82,6 +82,6 @@ HTML lowercases attribute names, so write camelCase properties with dashes: `[.t
 
 ## Examples and tests
 
-* `index.html`: the timecard, tic-tac-toe and hero editor demos.
+* `index.html`: the timecard, tic-tac-toe and hero editor demos. The timecard shows nested loops: days, then shifts, then services.
 * `todo-mvc/`: a todo app with a child component, editing, filters and saving to localStorage.
 * `test.html`: open it in a browser to run the tests.
