@@ -40,19 +40,19 @@ const templateString = /*html*/`
 	}
 </style>
 <div class="view" fjs-if="!this.editing">
-	<input type="checkbox" aria-label="Complete" [.checked]="this.todo.completed" [.onchange]="e => this.toggle(e.target.checked)">
-	<label [class]="this.todo.completed && 'completed'" [.ondblclick]="() => this.startEditing()">{{this.todo.title}}</label>
-	<button aria-label="Delete" [.onclick]="() => this.onDelete()">×</button>
+	<input type="checkbox" aria-label="Complete" [.checked]="this.todo.completed" (change)="this.toggle(event.target.checked)">
+	<label [class]="this.todo.completed && 'completed'" (dblclick)="this.startEditing()">{{this.todo.title}}</label>
+	<button aria-label="Delete" (click)="this.emit('delete')">×</button>
 </div>
 <input class="edit" aria-label="Edit todo" fjs-if="this.editing"
 	[.value]="this.editText"
-	[.oninput]="e => this.editText = e.target.value"
-	[.onkeydown]="e => this.handleKey(e)"
-	[.onblur]="() => this.finishEditing()">
+	(input)="this.editText = event.target.value"
+	(keydown)="this.handleKey(event)"
+	(blur)="this.finishEditing()">
 `;
 
-// Shows one todo. The parent passes it in with [.todo], and is told about changes
-// through [.on-change] and [.on-delete].
+// Shows one todo. The parent passes it in with [.todo], and hears about changes
+// through the update and delete events this sends with emit().
 class todoItem extends freshElement {
 	constructor() {
 		super(templateString);
@@ -63,7 +63,7 @@ class todoItem extends freshElement {
 
 	toggle(completed) {
 		this.todo.completed = completed;
-		this.onChange();
+		this.emit('update');
 	}
 
 	startEditing() {
@@ -92,9 +92,9 @@ class todoItem extends freshElement {
 
 		if(title) {
 			this.todo.title = title;
-			this.onChange();
+			this.emit('update');
 		} else {
-			this.onDelete();
+			this.emit('delete');
 		}
 	}
 }

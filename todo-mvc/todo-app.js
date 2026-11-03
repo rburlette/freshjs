@@ -72,16 +72,16 @@ const templateString = /*html*/`
 <h1>todos</h1>
 <input class="new-todo" aria-label="New todo" placeholder="What needs to be done?" autofocus
 	[.value]="this.newTitle"
-	[.oninput]="e => this.newTitle = e.target.value"
-	[.onkeydown]="e => e.key === 'Enter' && this.addTodo()">
+	(input)="this.newTitle = event.target.value"
+	(keydown)="event.key === 'Enter' && this.addTodo()">
 <section fjs-if="this.todos.length > 0">
 	<label>
-		<input type="checkbox" [.checked]="this.activeCount === 0" [.onchange]="e => this.toggleAll(e.target.checked)">
+		<input type="checkbox" [.checked]="this.activeCount === 0" (change)="this.toggleAll(event.target.checked)">
 		Mark all as complete
 	</label>
 	<ul>
 		<li fjs-for="todo in this.shownTodos">
-			<todo-item [.todo]="todo" [.on-change]="this.save" [.on-delete]="() => this.deleteTodo(todo)"></todo-item>
+			<todo-item [.todo]="todo" (update)="this.save()" (delete)="this.deleteTodo(todo)"></todo-item>
 		</li>
 	</ul>
 	<footer>
@@ -89,7 +89,7 @@ const templateString = /*html*/`
 		<a href="#/" [class]="this.filter === 'all' && 'selected'">All</a>
 		<a href="#/active" [class]="this.filter === 'active' && 'selected'">Active</a>
 		<a href="#/completed" [class]="this.filter === 'completed' && 'selected'">Completed</a>
-		<button fjs-if="this.activeCount < this.todos.length" [.onclick]="() => this.clearCompleted()">Clear completed</button>
+		<button fjs-if="this.activeCount < this.todos.length" (click)="this.clearCompleted()">Clear completed</button>
 	</footer>
 </section>
 `;

@@ -20,7 +20,7 @@ const templateString = /*html*/`
         outline: none;
     }
 </style>
-<button fjs-for="square in this.squares" [.onclick]="() => this.onsquareclick(index)">{{square}}</button>
+<button fjs-for="square in this.squares" (click)="this.emit('square-click', index)">{{square}}</button>
 `;
 
 class tttBoard extends freshElement {

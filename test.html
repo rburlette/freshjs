@@ -275,7 +275,7 @@
 		});
 
 		test('[onclick] attribute bindings are refused', () => {
-			throws(() => mount('<button [onclick]="this.code">x</button>'), '[.onclick]');
+			throws(() => mount('<button [onclick]="this.code">x</button>'), '(click)');
 		});
 
 		test('a template that changes between instances is refused', () => {
@@ -377,23 +377,73 @@
 		});
 
 
-		// After an event handler in a template runs, its component refreshes by itself.
-		test('auto refresh: an event handler refreshes its component', () => {
-			let element = mount('<button [.onclick]="() => this.count++">{{this.count}}</button>', function() { this.count = 0; });
+		// (event)="expression" runs when the element fires the event, then the component refreshes by itself.
+		test('events: (click) runs its expression and refreshes the component', () => {
+			let element = mount('<button (click)="this.count++">{{this.count}}</button>', function() { this.count = 0; });
 			element.shadowRoot.querySelector('button').click();
 			equal(text(element), '1');
 		});
 
-		test('auto refresh: an [.on-...] callback refreshes the parent that passed it', () => {
-			customElements.define('auto-child', class extends freshElement {
-				constructor() { super('<button [.onclick]="() => this.onPress()">go</button>'); }
-			});
-			let element = mount('<auto-child [.on-press]="() => this.count++"></auto-child><i>{{this.count}}</i>', function() { this.count = 0; });
-			element.shadowRoot.querySelector('auto-child').shadowRoot.querySelector('button').click();
-			equal(element.shadowRoot.querySelector('i').textContent, '1');
+		test('events: the expression can use event', () => {
+			let element = mount('<input (input)="this.text = event.target.value"><b>{{this.text}}</b>', function() { this.text = ''; });
+			let input = element.shadowRoot.querySelector('input');
+			input.value = 'hi';
+			input.dispatchEvent(new Event('input'));
+			equal(element.shadowRoot.querySelector('b').textContent, 'hi');
 		});
 
-		test('auto refresh: other function properties do not refresh (no loop when a child calls one while rendering)', () => {
+		test('events: (click)="this.method" calls the method with the event, and this as the component', () => {
+			let element = mount('<button (click)="this.save">x</button>', function() {
+				this.save = function(event) { this.savedFrom = event.type; };
+			});
+			element.shadowRoot.querySelector('button').click();
+			equal(element.savedFrom, 'click');
+		});
+
+		test('events: in a list, the row uses its current item after the list changes', () => {
+			let element = mount('<button fjs-for="letter in this.letters" (click)="this.clicked = letter">{{letter}}</button>',
+				function() { this.letters = ['a', 'b', 'c']; });
+			element.letters = ['b', 'c'];
+			element.refresh();
+			element.shadowRoot.querySelector('button').click();
+			equal(element.clicked, 'b');
+		});
+
+		test('events: a (keydown) expression that comes out false does not cancel the key', () => {
+			let element = mount('<input (keydown)="event.key === \'Enter\' && this.add()">', function() { this.add = () => {}; });
+			let event = new KeyboardEvent('keydown', {key: 'h', cancelable: true});
+			element.shadowRoot.querySelector('input').dispatchEvent(event);
+			equal(event.defaultPrevented, false);
+		});
+
+		test('events: typing never writes back into the input that shows the text', () => {
+			let element = mount('<input [.value]="this.text" (input)="this.text = event.target.value">', function() { this.text = ''; });
+			let input = element.shadowRoot.querySelector('input'), writes = 0;
+			let value = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+			Object.defineProperty(input, 'value', {get() { return value.get.call(this); }, set(text) { writes++; value.set.call(this, text); }});
+			for(let typed of ['h', 'he', 'hey']) {
+				value.set.call(input, typed); // what typing does, without counting it
+				input.dispatchEvent(new Event('input'));
+			}
+			equal(element.text + ', ' + writes + ' writes', 'hey, 0 writes');
+		});
+
+		test('events: a child sends an event with emit(), and the parent\'s binding refreshes the parent', () => {
+			customElements.define('emit-child', class extends freshElement {
+				constructor() { super('<button (click)="this.emit(\'press\', 5)">go</button>'); }
+			});
+			let element = mount('<emit-child (press)="this.total += event.detail"></emit-child><i>{{this.total}}</i>', function() { this.total = 0; });
+			element.shadowRoot.querySelector('emit-child').shadowRoot.querySelector('button').click();
+			equal(element.shadowRoot.querySelector('i').textContent, '5');
+		});
+
+		test('events: [.onclick] is a plain property and does not refresh', () => {
+			let element = mount('<button [.onclick]="() => this.count++">{{this.count}}</button>', function() { this.count = 0; });
+			element.shadowRoot.querySelector('button').click();
+			equal(element.count + ' shown as ' + text(element), '1 shown as 0');
+		});
+
+		test('events: function properties never refresh (no loop when a child calls one while rendering)', () => {
 			let refreshes = 0;
 			customElements.define('auto-format', class extends freshElement {
 				constructor() { super('<b>{{this.format(1)}}</b>'); }
@@ -407,25 +457,27 @@
 			equal(refreshes, 1);
 		});
 
-		test('auto refresh: an on... callback called while rendering does not refresh again', () => {
+		test('events: an event sent while rendering does not refresh again', () => {
 			let refreshes = 0;
-			customElements.define('auto-render-callback', class extends freshElement {
-				constructor() { super('<b>{{this.onRender()}}</b>'); }
+			customElements.define('emit-while-rendering', class extends freshElement {
+				constructor() { super('<b>{{this.emit(\'render\') && \'ok\'}}</b>'); }
 			});
-			let element = mount('<auto-render-callback [.on-render]="() => \'ok\'"></auto-render-callback>', function() {
+			let element = mount('<emit-while-rendering (render)="this.heard = true"></emit-while-rendering>', function() {
 				let refresh = this.refresh;
 				this.refresh = function() { refreshes++; refresh.call(this); };
 			});
-			equal(element.shadowRoot.querySelector('auto-render-callback').shadowRoot.textContent, 'ok');
-			equal(refreshes, 1);
+			equal(element.shadowRoot.querySelector('emit-while-rendering').shadowRoot.textContent + ', heard ' + element.heard + ', ' + refreshes + ' refresh', 'ok, heard true, 1 refresh');
 		});
 
 		{
-			let element = mount('<button [.onclick]="async () => { await null; this.count++; }">{{this.count}}</button>', function() { this.count = 0; });
+			let element = mount('<button (click)="this.load()">{{this.count}}</button>', function() {
+				this.count = 0;
+				this.load = async function() { await null; this.count++; };
+			});
 			element.shadowRoot.querySelector('button').click();
 			let before = text(element);
 			await new Promise(resolve => setTimeout(resolve));
-			test('auto refresh: an async handler refreshes again when it finishes', () => {
+			test('events: an async handler refreshes again when it finishes', () => {
 				equal(before + ' then ' + text(element), '0 then 1');
 			});
 		}
@@ -436,14 +488,14 @@
 			let shared = {count: 0};
 			customElements.define('auto-sibling', class extends freshElement {
 				constructor() {
-					super('<button [.onclick]="() => this.add()">{{this.shared.count}}</button>');
+					super('<button (click)="this.add()">{{this.shared.count}}</button>');
 					this.shared = shared;
 				}
 				add() { shared.count++; }
 			});
 			customElements.define('auto-sibling-all', class extends freshElement {
 				constructor() {
-					super('<button [.onclick]="() => this.add()">{{this.shared.count}}</button>');
+					super('<button (click)="this.add()">{{this.shared.count}}</button>');
 					this.shared = shared;
 				}
 				add() { shared.count++; this.refreshAll(); }
@@ -451,12 +503,12 @@
 			let element = mount('<auto-sibling></auto-sibling><auto-sibling></auto-sibling><auto-sibling-all></auto-sibling-all>');
 			let [a, b, c] = [...element.shadowRoot.children].map(child => child.shadowRoot.querySelector('button'));
 
-			test('auto refresh: by default an event refreshes only its own component', () => {
+			test('events: by default an event refreshes only its own component', () => {
 				a.click();
 				equal([a, b, c].map(button => button.textContent).join(), '1,0,0');
 			});
 
-			test('auto refresh: this.refreshAll() refreshes the whole app', () => {
+			test('events: this.refreshAll() refreshes the whole app', () => {
 				c.click();
 				equal([a, b, c].map(button => button.textContent).join(), '2,2,2');
 			});
