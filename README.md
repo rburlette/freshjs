@@ -94,3 +94,7 @@ What's included:
 * `index.html`: the timecard, tic-tac-toe and hero editor demos. The timecard is built from nested components (`ch-timecard` shows a `ch-timecard-day` for each day, which shows a `ch-timecard-shift` for each shift), with its rules as plain functions in `timecard-model.js`.
 * `todo-mvc/`: a todo app with a child component, editing, filters and saving to localStorage.
 * `test.html`: open it in a browser to run the tests.
+
+## License
+
+FreshJS is released under the [MIT License](LICENSE).
