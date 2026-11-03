@@ -7,6 +7,7 @@ const theme = new CSSStyleSheet(), icons = new CSSStyleSheet();
 
 export async function loadStyles() {
 	theme.replaceSync(await (await fetch('/styles.css')).text());
+	document.adoptedStyleSheets = [theme]; // the page itself uses the same copy, so it's downloaded once
 
 	// icons come from a CDN and are optional; components pick them up whenever they arrive
 	fetch('https://cdnjs.cloudflare.com/ajax/libs/ionicons/2.0.1/css/ionicons.min.css')

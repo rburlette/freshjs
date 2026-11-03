@@ -52,20 +52,21 @@ class articleList extends conduitElement {
 		this.loading = false;
 	}
 
-	// FreshJS has no "property changed" hook, so a setter starts loading when the path changes
-	set path(path) {
-		if(path === this.loadedPath)
-			return;
-		this.loadedPath = path;
-		this.load();
-	}
-
-	get path() {
-		return this.loadedPath;
+	// FreshJS has no "property changed" hook, so the list checks its inputs each time it renders. It
+	// loads again when the path changes, or when someone signs in or out, since that changes the
+	// favorited flags and the feed. (A binding only sets [.path] when its value changes, and a page
+	// hidden by fjs-if keeps its list, so neither a setter nor the constructor would catch a sign-in.)
+	refresh() {
+		let key = this.path + ' as ' + (session.user?.username || 'guest');
+		if(this.path && key !== this.loadedKey) {
+			this.loadedKey = key;
+			this.load();
+		}
+		super.refresh();
 	}
 
 	get isFeed() {
-		return (this.loadedPath || '').startsWith('/articles/feed');
+		return (this.path || '').startsWith('/articles/feed');
 	}
 
 	get pages() {
@@ -73,12 +74,12 @@ class articleList extends conduitElement {
 	}
 
 	async load() {
-		let path = this.loadedPath;
+		let key = this.loadedKey;
 		this.loading = true;
 
 		try {
-			let {articles, articlesCount} = await api('GET', path);
-			if(path !== this.loadedPath)
+			let {articles, articlesCount} = await api('GET', this.path);
+			if(key !== this.loadedKey)
 				return; // a newer list was asked for in the meantime
 			this.articles = articles;
 			this.count = articlesCount;
