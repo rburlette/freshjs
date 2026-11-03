@@ -63,7 +63,7 @@ reach its CDN.
 ## How it compares
 
 RealWorld apps in other frameworks were run against the same local API in headless Chromium, with
-the same steps. Times are the median of 5 runs, from the click until the page shows the new
+the same steps. Times are the median of 10 runs, from the click until the page shows the new
 content, including the API call. The second number is with the CPU slowed down 4×, roughly a
 mid-range phone.
 
@@ -71,15 +71,15 @@ mid-range phone.
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Download, gzipped | 26 KB | 52 KB | 92 KB | 54 KB | 108 KB |
 | JavaScript heap after loading | 1.4 MB | 2.4 MB | 2.3 MB | 1.8 MB | 3.4 MB |
-| Lines of app code | 1,013 | 1,829 | 2,087 | 1,153 | 2,204 |
-| First load (ms) | 128 / 382 | 120 / 445 | 138 / 486 | 123 / 349 | 175 / 634 |
-| Next page of articles | 13 / 44 | 20 / 60 | 14 / 56 | 22 / 77 | 21 / 77 |
-| A tag's articles | 15 / 46 | 20 / 87 | 12 / 33 | 21 / 38 | 27 / 106 |
-| Back to the global feed | 12 / 32 | 21 / 76 | 10 / 34 | 25 / 45 | 20 / 82 |
-| Open an article | 14 / 48 | 60 / 204 | 18 / 64 | 27 / 53 | 78 / 227 |
-| Favorite an article | 8 / 23 | 10 / 35 | 8 / 25 | 26 / 60 | 10 / 28 |
-| Post a comment | 9 / 24 | 10 / 30 | 11 / 36 | 21 / 50 | 11 / 35 |
-| Open a profile | 19 / 56 | 27 / 82 | 14 / 44 | 30 / 56 | 58 / 155 |
+| Lines of app code | 996 | 1,829 | 2,087 | 1,153 | 2,204 |
+| First load (ms) | 121 / 372 | 120 / 415 | 116 / 469 | 127 / 316 | 174 / 606 |
+| Next page of articles | 14 / 44 | 19 / 69 | 16 / 53 | 22 / 66 | 20 / 79 |
+| A tag's articles | 14 / 45 | 20 / 73 | 12 / 35 | 22 / 35 | 25 / 96 |
+| Back to the global feed | 12 / 35 | 19 / 59 | 11 / 31 | 21 / 45 | 19 / 83 |
+| Open an article | 14 / 50 | 59 / 211 | 17 / 65 | 26 / 58 | 73 / 225 |
+| Favorite an article | 8 / 21 | 9 / 29 | 9 / 25 | 23 / 64 | 11 / 28 |
+| Post a comment | 9 / 23 | 11 / 28 | 10 / 26 | 23 / 53 | 13 / 36 |
+| Open a profile | 19 / 54 | 26 / 74 | 14 / 45 | 29 / 60 | 55 / 156 |
 
 * The apps: [Vue](https://github.com/mutoe/vue3-realworld-example-app),
   [React](https://github.com/gothinkster/react-redux-realworld-example-app) (with Redux, last
