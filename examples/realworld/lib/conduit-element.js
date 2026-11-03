@@ -4,6 +4,7 @@ import {freshElement} from '/fresh.js';
 // every component here adopts the shared Conduit theme and the icon classes itself. Each sheet is
 // one shared object: the browser parses it once, however many components use it.
 const theme = new CSSStyleSheet(), icons = new CSSStyleSheet();
+const dateFormat = new Intl.DateTimeFormat('en-US', {month: 'long', day: 'numeric', year: 'numeric'});
 
 export async function loadStyles() {
 	theme.replaceSync(await (await fetch('/styles.css')).text());
@@ -27,7 +28,8 @@ export class conduitElement extends freshElement {
 		return image || '/default-avatar.svg';
 	}
 
+	// templates run their expressions on every refresh, so the formatter is made once, not per call
 	formatDate(date) {
-		return new Date(date).toLocaleDateString('en-US', {month: 'long', day: 'numeric', year: 'numeric'});
+		return dateFormat.format(new Date(date));
 	}
 }
