@@ -73,7 +73,7 @@ mid-range phone.
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Download, gzipped | 26 KB | 52 KB | 92 KB | 54 KB | 108 KB |
 | JavaScript heap after loading | 1.4 MB | 2.4 MB | 2.3 MB | 1.8 MB | 3.4 MB |
-| Lines of app code | 1,011 | 1,848 | 2,086 | 1,153 | 2,218 |
+| Lines of app code | 1,013 | 1,829 | 2,087 | 1,153 | 2,204 |
 | First load (ms) | 128 / 382 | 120 / 445 | 138 / 486 | 123 / 349 | 175 / 634 |
 | Next page of articles | 13 / 44 | 20 / 60 | 14 / 56 | 22 / 77 | 21 / 77 |
 | A tag's articles | 15 / 46 | 20 / 87 | 12 / 33 | 21 / 38 | 27 / 106 |
