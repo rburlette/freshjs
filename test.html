@@ -514,6 +514,129 @@
 			});
 		}
 
+
+		// fjs-key: rows belong to items instead of positions
+		function keyedList(keyed) {
+			return mount('<li fjs-for="row in this.rows"' + (keyed ? ' fjs-key="row.id"' : '') + '>{{row.name}} <input></li>',
+				function() { this.rows = [{id: 1, name: 'a'}, {id: 2, name: 'b'}, {id: 3, name: 'c'}]; });
+		}
+
+		function typeInto(element, index, text) {
+			element.shadowRoot.querySelectorAll('input')[index].value = text;
+		}
+
+		function rowsWithText(element) {
+			return [...element.shadowRoot.querySelectorAll('li')].map(li => li.textContent.trim() + ':' + li.querySelector('input').value).join(' ');
+		}
+
+		test('keys: without fjs-key, typed text stays with the position when the first item is removed', () => {
+			let element = keyedList(false);
+			typeInto(element, 1, 'note for b');
+			element.rows.shift();
+			element.refresh();
+			equal(rowsWithText(element), 'b: c:note for b');
+		});
+
+		test('keys: with fjs-key, typed text stays with its item when the first item is removed', () => {
+			let element = keyedList(true);
+			typeInto(element, 1, 'note for b');
+			element.rows.shift();
+			element.refresh();
+			equal(rowsWithText(element), 'b:note for b c:');
+		});
+
+		test('keys: reordering keeps each item\'s own row element', () => {
+			let element = keyedList(true);
+			let before = [...element.shadowRoot.querySelectorAll('li')];
+			element.rows.reverse();
+			element.refresh();
+			let after = [...element.shadowRoot.querySelectorAll('li')];
+			equal(after.map(li => before.indexOf(li)).join(), '2,1,0');
+			equal(after.map(li => li.textContent.trim()).join(), 'c,b,a');
+		});
+
+		test('keys: a focused row keeps focus when a row above it is removed', () => {
+			let element = keyedList(true);
+			document.getElementById('scratch').style.display = 'block';
+			element.shadowRoot.querySelectorAll('input')[2].focus();
+			element.rows.shift();
+			element.refresh();
+			let focused = element.shadowRoot.activeElement;
+			document.getElementById('scratch').style.display = 'none';
+			equal(focused && focused.parentNode.textContent.trim(), 'c');
+		});
+
+		test('keys: a child component keeps its own state when items are reordered', () => {
+			customElements.define('keyed-counter', class extends freshElement {
+				constructor() { super('<button (click)="this.clicks++">{{this.label}} {{this.clicks}}</button>'); this.clicks = 0; }
+			});
+			let element = mount('<keyed-counter fjs-for="row in this.rows" fjs-key="row.id" [.label]="row.name"></keyed-counter>',
+				function() { this.rows = [{id: 1, name: 'a'}, {id: 2, name: 'b'}]; });
+			element.shadowRoot.querySelectorAll('keyed-counter')[0].shadowRoot.querySelector('button').click();
+			element.rows.reverse();
+			element.refresh();
+			equal([...element.shadowRoot.querySelectorAll('keyed-counter')].map(counter => counter.shadowRoot.textContent).join(), 'b 0,a 1');
+		});
+
+		test('keys: moving one item to the front or the back moves one row, a swap moves two', () => {
+			let element = mount('<li fjs-for="row in this.rows" fjs-key="row">{{row}}</li>', function() { this.rows = ['a', 'b', 'c', 'd', 'e']; });
+			let moved = change => {
+				let observer = new MutationObserver(() => {});
+				observer.observe(element.shadowRoot, {childList: true});
+				change(element.rows);
+				element.refresh();
+				let records = observer.takeRecords();
+				observer.disconnect();
+				return new Set(records.flatMap(record => [...record.removedNodes])).size;
+			};
+			let counts = [
+				moved(rows => rows.unshift(rows.pop())),            // e to the front
+				moved(rows => rows.push(rows.shift())),             // e back to the end
+				moved(rows => { [rows[1], rows[3]] = [rows[3], rows[1]]; })
+			];
+			equal(counts.join() + ' ' + element.shadowRoot.textContent, '1,1,2 adcbe');
+		});
+
+		test('keys: 300 random changes keep the order right and every item on its own row', () => {
+			let element = mount('<li fjs-for="row in this.rows" fjs-key="row.id">{{row.id}}</li>', function() { this.rows = []; });
+			let elementFor = new Map(), nextId = 1, seed = 7;
+			let random = n => { seed = (seed * 16807) % 2147483647; return seed % n; };
+			for(let step = 0; step < 300; step++) {
+				let rows = element.rows, choice = random(5);
+				if(choice === 0 || rows.length < 3)
+					rows.splice(random(rows.length + 1), 0, {id: nextId++});
+				else if(choice === 1)
+					rows.splice(random(rows.length), 1);
+				else if(choice === 2)
+					rows.splice(random(rows.length), 0, ...rows.splice(random(rows.length), 1));
+				else if(choice === 3)
+					for(let i = rows.length - 1; i > 0; i--) { let j = random(i + 1); [rows[i], rows[j]] = [rows[j], rows[i]]; }
+				else
+					element.rows = rows.map(row => ({id: row.id})); // new objects, same keys
+				element.refresh();
+				let lis = [...element.shadowRoot.querySelectorAll('li')];
+				if(lis.map(li => li.textContent).join() !== element.rows.map(row => row.id).join())
+					throw new Error('wrong order at step ' + step);
+				for(let li of lis) {
+					let known = elementFor.get(li.textContent);
+					if(known && known !== li)
+						throw new Error('item ' + li.textContent + ' got a new row element at step ' + step);
+					elementFor.set(li.textContent, li);
+				}
+			}
+		});
+
+		test('keys: the same key twice is an error, and the list is left as it was', () => {
+			let element = keyedList(true);
+			element.rows.push({id: 1, name: 'again'});
+			throws(() => element.refresh(), 'same key');
+			equal(element.shadowRoot.querySelectorAll('li').length, 3);
+		});
+
+		test('keys: fjs-key without fjs-for is an error', () => {
+			throws(() => mount('<p fjs-key="1">x</p>'), 'fjs-for');
+		});
+
 		let list = document.getElementById('results');
 		for(let result of results) {
 			let item = document.createElement('li');
