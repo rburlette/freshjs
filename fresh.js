@@ -21,9 +21,21 @@ function blockScriptUrl(name, value) {
 	return value;
 }
 
-// HTML lowercases attribute names, so [.text-content] is how you write the textContent property.
-function camelCase(name) {
-	return name.replace(/-([a-z])/g, (match, letter) => letter.toUpperCase());
+// HTML lowercases attribute names, so [.textContent] arrives as "textcontent". This finds the
+// element's real property: written with dashes ([.text-content]), or one that only differs in
+// capitals, such as innerHTML. Otherwise (say, a custom element's own property) it is the
+// dashes-to-camelCase name.
+function propertyName(element, name) {
+	let camelCase = name.replace(/-([a-z])/g, (match, letter) => letter.toUpperCase());
+	if(camelCase in element)
+		return camelCase;
+
+	let wanted = camelCase.toLowerCase();
+	for(let key in element)
+		if(key.toLowerCase() === wanted && key !== wanted) // never trade onChange for the browser's onchange
+			return key;
+
+	return camelCase;
 }
 
 // Reads a template once per component type and records where each binding is, as a path of
@@ -99,7 +111,7 @@ class freshTemplate {
 			if(isEvent)
 				this.add(path, eventBinder, value, {name: name.slice(1, -1)}, ['event']);
 			else if(name[1] === '.')
-				this.add(path, propertyBinder, value, {name: camelCase(name.slice(2, -1))});
+				this.add(path, propertyBinder, value, {name: propertyName(element, name.slice(2, -1))});
 			else if(name.startsWith('[on'))
 				throw this.error(name + ' would turn a string into code. Use (' + name.slice(3, -1) + ')="..." for events.');
 			else
@@ -433,6 +445,11 @@ class componentBinder {
 }
 
 export class freshElement extends HTMLElement {
+	// A component renders in its own shadow root, where the page's styles don't reach. Set
+	// `static shadow = false` on its class to render it in the page instead: the page's stylesheets
+	// then style it, and document.querySelector() finds what's inside.
+	static shadow = true;
+
 	constructor(templateString = '') {
 		super();
 
@@ -451,12 +468,17 @@ export class freshElement extends HTMLElement {
 		}
 
 		this.templateInstance = template.createInstance(this);
-		this.attachShadow({mode: 'open'}).appendChild(this.templateInstance.element);
+		if(this.constructor.shadow)
+			this.attachShadow({mode: 'open'}).appendChild(this.templateInstance.element);
 	}
 
 	// A component renders when it is added to the page, unless it sits in another component's
 	// template; then that parent renders it. If you override this, call super.connectedCallback().
 	connectedCallback() {
+		// an element can't get children while it's being created, so without a shadow root the
+		// content goes in the first time it's added (after that, the fragment is empty)
+		if(!this.shadowRoot)
+			this.append(this.templateInstance.element);
 		if(!this.freshParent)
 			this.refresh();
 	}

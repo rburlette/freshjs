@@ -53,19 +53,20 @@ This example recreates the Hero Editor component in the Angular tutorial. Put `<
 | `[title]="this.tip"` | Sets an attribute. `null`, `undefined` and `false` remove it, and `true` adds it with no value, so `[disabled]="this.busy"` works. |
 | `[.value]="this.name"` | Sets a DOM property. |
 | `(click)="this.save()"` | Runs when the element fires the event, then refreshes the component. `event` is the event: `(input)="this.name = event.target.value"`. If the expression is a function, such as `(click)="this.save"`, it is called with the event. |
-| `fjs-if="this.visible"` | Adds or removes the element. |
+| `fjs-if="this.visible"` | Adds or removes the element. A removed element is kept, with any components in it, and comes back as it was, refreshed. |
 | `fjs-for="todo in this.todos"` | Repeats the element for each item. `index` is the item's position. Without a name, the item is called `item`. |
 | `fjs-key="todo.id"` | On an `fjs-for` element, keeps each item on its own row. See [Lists](#lists). |
 
 Square brackets put data into an element, and round brackets get events out of it. Expressions are plain JavaScript, and `this` is the component. Inner loops can use the outer loop's item name, and `index` is always the innermost loop's position.
 
-HTML lowercases attribute names, so write camelCase properties with dashes: `[.text-content]` sets `textContent`. For the same reason, name your own events in lowercase or with dashes, such as `(square-click)`.
+HTML lowercases attribute names, but FreshJS still finds the element's real property: `[.textContent]` and `[.innerHTML]` work as written. For a component's own camelCase properties, use dashes: `[.row-data]` sets `rowData`. For the same reason, name your own events in lowercase or with dashes, such as `(square-click)`.
 
 ## Refreshing
 
 * After an `(event)` binding runs, the component whose template it is in refreshes. If the expression returns a promise, as an `async` method does, it refreshes again when the promise resolves.
 * When a child sends an event with `this.emit('delete')`, the parent's `(delete)="..."` binding is in the parent's template, so the parent refreshes.
 * Refreshing a component refreshes the child components in its template too, after their properties are set. Only values that changed touch the page.
+* A refresh runs every expression in the template, then changes only what differs. So keep expressions quick: for example, make a date formatter once, not in each call.
 * Call `this.refresh()` yourself after other changes: in a timer, in a listener you added with `addEventListener`, after a promise you didn't return, or when the page has to update in the middle of a handler (for example, to focus an input you just showed).
 * Call `this.refreshAll()` when you change data that components elsewhere on the page also show. It refreshes the top-level component this one is inside, and everything in it.
 
@@ -80,11 +81,26 @@ HTML lowercases attribute names, so write camelCase properties with dashes: `[.t
 
 * Pass data to child components with properties, and listen for the events they send: `<todo-item [.todo]="todo" (delete)="this.deleteTodo(todo)"></todo-item>`.
 * A child sends an event with `this.emit('delete')`, or `this.emit('delete', value)` to include a value, which the parent reads as `event.detail`. It is an ordinary DOM event, so components that aren't built with FreshJS can listen too.
+* A binding sets a property only when its value changes, and then a setter can react to it. To react to several properties, or to data from outside such as who is signed in, override `refresh()`: check what changed, then call `super.refresh()`.
 * Template expressions can use `this` and global names, but not the imports in your module. To use an imported function, call it from a component method.
 * Import a child component at the top of the parent's file, so it is defined before the parent uses it.
 * The usual web component lifecycle callbacks work. If you override `connectedCallback`, call `super.connectedCallback()`.
 * Don't give component fields or methods the same names as built-in element properties such as `title`, `id`, `hidden` or `remove`.
 * Each component type has one template string, and FreshJS reports an error if it changes between instances.
+
+## Shadow DOM or the page
+
+By default a component renders in its own shadow root. Its insides are walled off: the page's CSS doesn't reach in, its own `<style>` doesn't leak out, and `<slot>` places the content written inside its tag. That suits a component meant for pages you don't control, such as a widget others embed.
+
+In an app, components usually share one stylesheet instead. Set `static shadow = false` on a class to render it in the page:
+
+```js
+class appElement extends freshElement {
+	static shadow = false; // every component that extends this one renders in the page
+}
+```
+
+Then the page's stylesheets style it like any other HTML, and `document.querySelector()` and testing tools find what's inside. In exchange, a component's CSS applies to the whole page, so give its classes clear names. There is no `<slot>`, so pass content as properties. And an `(event)` binding can see an `event.target` from deep inside a child component.
 
 ## Security
 
@@ -92,7 +108,7 @@ HTML lowercases attribute names, so write camelCase properties with dashes: `[.t
 * Bound `javascript:` URLs in `href`, `src`, `action` and `formaction` are blocked.
 * Attribute bindings for events like `[onclick]` are refused, because they turn strings into code. Use `(click)` instead.
 * Templates are code. Never build a template string from user input. Use `{{ }}` bindings for data instead of `${ }`.
-* `[.inner-html]` inserts raw HTML. Only use it with HTML you trust or have sanitized.
+* `[.innerHTML]` inserts raw HTML. Only use it with HTML you trust or have sanitized.
 * Expressions are compiled with `new Function`, so a Content Security Policy must allow `'unsafe-eval'`.
 
 ## Examples and tests
@@ -110,6 +126,7 @@ What's included:
   * [`tic-tac-toe`](examples/tic-tac-toe): a board component that sends events to its game.
   * [`hero`](examples/hero): the Hero Editor from the Angular tutorial, shown at the top of this README.
 * [`examples/todo-mvc`](examples/todo-mvc): a todo app with a child component, editing, filters, keyed rows and saving to localStorage.
+* [`examples/realworld`](examples/realworld): the RealWorld "Conduit" blogging app, with routing, sign in, articles, comments and more. It has its own small server: run `node examples/realworld/server.mjs` and open http://localhost:3000.
 * [`test.html`](test.html): open it in a browser to run the tests.
 
 ## License

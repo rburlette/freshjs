@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<title>Conduit</title>
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/ionicons/2.0.1/css/ionicons.min.css">
+	<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,600,700|Lora:400,700">
+	<link rel="stylesheet" href="/styles.css">
+	<!-- Without a build step, the browser finds each import only once the file before it arrives.
+	     Listing the files here starts every download at once. -->
+	<link rel="modulepreload" href="/fresh.js">
+	<link rel="modulepreload" href="/lib/api.js">
+	<link rel="modulepreload" href="/lib/markdown.js">
+	<link rel="modulepreload" href="/components/article-meta.js">
+	<script type="module" src="/app.js"></script>
+</head>
+<body>
+	<conduit-app></conduit-app>
+</body>
+</html>
