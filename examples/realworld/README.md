@@ -65,21 +65,22 @@ reach its CDN.
 RealWorld apps in other frameworks were run against the same local API in headless Chromium, with
 the same steps. Times are the median of 10 runs, from the click until the page shows the new
 content, including the API call. The second number is with the CPU slowed down 4×, roughly a
-mid-range phone.
+mid-range phone. The browser reached nothing outside the machine, so no app had its web fonts or
+icon font.
 
 | | FreshJS | Vue 3 | React 16 | Svelte 5 | Angular 21 |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Download, gzipped | 26 KB | 52 KB | 92 KB | 54 KB | 108 KB |
 | JavaScript heap after loading | 1.4 MB | 2.4 MB | 2.3 MB | 1.8 MB | 3.4 MB |
 | Lines of app code | 996 | 1,829 | 2,087 | 1,153 | 2,204 |
-| First load (ms) | 121 / 372 | 120 / 415 | 116 / 469 | 127 / 316 | 174 / 606 |
-| Next page of articles | 14 / 44 | 19 / 69 | 16 / 53 | 22 / 66 | 20 / 79 |
-| A tag's articles | 14 / 45 | 20 / 73 | 12 / 35 | 22 / 35 | 25 / 96 |
-| Back to the global feed | 12 / 35 | 19 / 59 | 11 / 31 | 21 / 45 | 19 / 83 |
-| Open an article | 14 / 50 | 59 / 211 | 17 / 65 | 26 / 58 | 73 / 225 |
-| Favorite an article | 8 / 21 | 9 / 29 | 9 / 25 | 23 / 64 | 11 / 28 |
-| Post a comment | 9 / 23 | 11 / 28 | 10 / 26 | 23 / 53 | 13 / 36 |
-| Open a profile | 19 / 54 | 26 / 74 | 14 / 45 | 29 / 60 | 55 / 156 |
+| First load (ms) | 92 / 300 | 99 / 373 | 101 / 427 | 112 / 312 | 137 / 624 |
+| Next page of articles | 11 / 47 | 13 / 59 | 12 / 46 | 18 / 65 | 16 / 83 |
+| A tag's articles | 9 / 39 | 17 / 66 | 8 / 26 | 19 / 34 | 21 / 99 |
+| Back to the global feed | 8 / 33 | 14 / 61 | 8 / 27 | 13 / 37 | 14 / 75 |
+| Open an article | 10 / 40 | 50 / 196 | 12 / 58 | 23 / 48 | 57 / 200 |
+| Favorite an article | 5 / 18 | 7 / 24 | 6 / 17 | 17 / 56 | 7 / 24 |
+| Post a comment | 6 / 19 | 9 / 25 | 7 / 22 | 17 / 44 | 8 / 30 |
+| Open a profile | 11 / 45 | 21 / 70 | 9 / 39 | 24 / 51 | 35 / 158 |
 
 * The apps: [Vue](https://github.com/mutoe/vue3-realworld-example-app),
   [React](https://github.com/gothinkster/react-redux-realworld-example-app) (with Redux, last
