@@ -445,6 +445,11 @@ class componentBinder {
 }
 
 export class freshElement extends HTMLElement {
+	// A component renders in its own shadow root, where the page's styles don't reach. Set
+	// `static shadow = false` on its class to render it in the page instead: the page's stylesheets
+	// then style it, and document.querySelector() finds what's inside.
+	static shadow = true;
+
 	constructor(templateString = '') {
 		super();
 
@@ -463,12 +468,17 @@ export class freshElement extends HTMLElement {
 		}
 
 		this.templateInstance = template.createInstance(this);
-		this.attachShadow({mode: 'open'}).appendChild(this.templateInstance.element);
+		if(this.constructor.shadow)
+			this.attachShadow({mode: 'open'}).appendChild(this.templateInstance.element);
 	}
 
 	// A component renders when it is added to the page, unless it sits in another component's
 	// template; then that parent renders it. If you override this, call super.connectedCallback().
 	connectedCallback() {
+		// an element can't get children while it's being created, so without a shadow root the
+		// content goes in the first time it's added (after that, the fragment is empty)
+		if(!this.shadowRoot)
+			this.append(this.templateInstance.element);
 		if(!this.freshParent)
 			this.refresh();
 	}

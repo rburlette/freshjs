@@ -650,6 +650,73 @@
 			throws(() => mount('<p fjs-key="1">x</p>'), 'fjs-for');
 		});
 
+		// a component class with static shadow = false, which renders in the page
+		function light(name, template, setup) {
+			customElements.define(name, class extends freshElement {
+				static shadow = false;
+				constructor() {
+					super(template);
+					if(setup)
+						setup.call(this);
+				}
+			});
+		}
+
+		test('static shadow = false renders in the page, where page styles and document.querySelector reach', () => {
+			let style = document.createElement('style');
+			style.textContent = '.light-mark { color: rgb(1, 2, 3); }';
+			document.head.append(style);
+			light('light-basic', '<p class="light-mark">{{this.word}}</p>', function() { this.word = 'hi'; });
+			let element = document.createElement('light-basic');
+			document.getElementById('scratch').append(element);
+			equal(element.shadowRoot, null);
+			equal(element.textContent, 'hi');
+			equal(document.querySelector('light-basic .light-mark'), element.firstElementChild);
+			equal(getComputedStyle(element.firstElementChild).color, 'rgb(1, 2, 3)');
+			element.word = 'bye';
+			element.refresh();
+			equal(element.textContent, 'bye');
+			style.remove();
+		});
+
+		test('light DOM children render with their parent, inside shadow and light parents', () => {
+			light('light-child', '<b>{{this.label}}</b>');
+			light('light-parent', '<light-child [.label]="this.name"></light-child>', function() { this.name = 'in light'; });
+			let lightParent = document.createElement('light-parent');
+			let shadowParent = mount('<light-child [.label]="this.name"></light-child>', function() { this.name = 'in shadow'; });
+			document.getElementById('scratch').append(lightParent);
+			equal(lightParent.textContent, 'in light');
+			equal(text(shadowParent), 'in shadow');
+			lightParent.name = 'changed';
+			lightParent.refresh();
+			equal(lightParent.innerHTML.replace(/<!--.*?-->/g, ''), '<light-child><b>changed</b></light-child>');
+		});
+
+		test('light DOM rows that fjs-key moves keep their content and render once', () => {
+			light('light-row', '<i>{{this.row}}</i>');
+			light('light-list', '<light-row fjs-for="row in this.rows" fjs-key="row" [.row]="row"></light-row>', function() { this.rows = ['a', 'b', 'c']; });
+			let element = document.createElement('light-list');
+			document.getElementById('scratch').append(element);
+			let before = [...element.querySelectorAll('light-row')];
+			element.rows = ['c', 'a', 'b'];
+			element.refresh();
+			equal(element.textContent, 'cab');
+			equal(element.querySelectorAll('i').length, 3);
+			equal(element.querySelectorAll('light-row')[0], before[2]);
+		});
+
+		test('a light DOM component that is shown again by fjs-if keeps its content', () => {
+			light('light-item', '<u>{{this.n}}</u>');
+			let element = mount('<light-item fjs-if="this.show" [.n]="this.n"></light-item>', function() { this.show = true; this.n = 1; });
+			element.show = false;
+			element.refresh();
+			equal(text(element), '');
+			element.show = true;
+			element.n = 2;
+			element.refresh();
+			equal(element.shadowRoot.querySelector('light-item').innerHTML, '<u>2</u>');
+		});
+
 		let list = document.getElementById('results');
 		for(let result of results) {
 			let item = document.createElement('li');

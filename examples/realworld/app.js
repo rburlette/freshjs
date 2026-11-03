@@ -1,4 +1,4 @@
-import {conduitElement, loadStyles} from './lib/conduit-element.js';
+import {conduitElement} from './lib/conduit-element.js';
 import {session, restoreSession, onSessionChange} from './lib/session.js';
 import {route, navigate, onRouteChange} from './lib/router.js';
 import './components/article-list.js';
@@ -77,6 +77,5 @@ class conduitApp extends conduitElement {
 	}
 }
 
-await loadStyles(); // before the first render, so the app never shows unstyled
 customElements.define('conduit-app', conduitApp);
 restoreSession();

@@ -88,6 +88,20 @@ HTML lowercases attribute names, but FreshJS still finds the element's real prop
 * Don't give component fields or methods the same names as built-in element properties such as `title`, `id`, `hidden` or `remove`.
 * Each component type has one template string, and FreshJS reports an error if it changes between instances.
 
+## Shadow DOM or the page
+
+By default a component renders in its own shadow root. Its insides are walled off: the page's CSS doesn't reach in, its own `<style>` doesn't leak out, and `<slot>` places the content written inside its tag. That suits a component meant for pages you don't control, such as a widget others embed.
+
+In an app, components usually share one stylesheet instead. Set `static shadow = false` on a class to render it in the page:
+
+```js
+class appElement extends freshElement {
+	static shadow = false; // every component that extends this one renders in the page
+}
+```
+
+Then the page's stylesheets style it like any other HTML, and `document.querySelector()` and testing tools find what's inside. In exchange, a component's CSS applies to the whole page, so give its classes clear names. There is no `<slot>`, so pass content as properties. And an `(event)` binding can see an `event.target` from deep inside a child component.
+
 ## Security
 
 * `{{ }}` always inserts text, so user data can't add HTML or scripts to the page.

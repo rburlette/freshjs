@@ -28,14 +28,13 @@ articles every time. Every sample user's password is `password123` (for example
 | `lib/session.js` | Who is signed in, shared by every component. |
 | `lib/api.js` | Calls the API and turns its errors into messages. |
 | `lib/markdown.js` | Escapes article text, then turns a small markdown subset into HTML. |
-| `lib/conduit-element.js` | The base component: shared styles and template helpers. |
+| `lib/conduit-element.js` | The base component: renders in the page, and has helpers templates can call. |
 | `server.mjs` | The stand-in API and file server. |
 
 A few patterns fill gaps that FreshJS doesn't cover itself:
 
-* **Shared styles.** Components render in shadow DOM, where the page's stylesheet doesn't reach,
-  so every component adopts the same parsed copy of the theme (`adoptedStyleSheets`). The page
-  adopts it too, so it's downloaded once.
+* **One stylesheet.** The base component sets `static shadow = false`, so every component renders
+  in the page and the theme in `index.html` styles it, rules that span several components included.
 * **Reacting to new properties.** A page has a `route` setter, which runs when the app passes it a
   new route, and starts loading data. A binding only sets a property when its value changes, so
   the article list checks its inputs in `refresh()` instead: it must also reload when someone
@@ -54,9 +53,8 @@ A few patterns fill gaps that FreshJS doesn't cover itself:
 ## Tests
 
 The official [RealWorld end-to-end tests](https://github.com/gothinkster/realworld/tree/main/specs/e2e)
-pass 131 of 140 as they are. The 9 that fail all use a helper that counts comments with
-`document.querySelectorAll()`, which can't see inside shadow DOM. With that helper counting through
-Playwright locators instead, all 140 pass.
+pass, all 140. (With components in shadow DOM, 9 failed: they count comments with
+`document.querySelectorAll()`, which can't see inside a shadow root.)
 
 To run them against this local server, two test files that hard-code the public demo API were
 pointed at the local one, and the icon font was served locally because the test machine couldn't

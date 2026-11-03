@@ -44,7 +44,7 @@ function update() {
 
 addEventListener('popstate', update);
 
-// composedPath() sees into shadow DOM, so links inside components are found too
+// composedPath() also sees into shadow DOM, in case a component uses one
 document.addEventListener('click', event => {
 	let link = event.composedPath().find(node => node instanceof HTMLAnchorElement && node.hasAttribute('href'));
 
