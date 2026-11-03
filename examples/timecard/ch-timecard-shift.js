@@ -1,4 +1,4 @@
-import {freshElement} from './fresh.js';
+import {freshElement} from '../../fresh.js';
 import * as timecard from './timecard-model.js';
 
 const templateString = /*html*/`

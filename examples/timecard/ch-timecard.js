@@ -1,4 +1,4 @@
-import {freshElement} from './fresh.js';
+import {freshElement} from '../../fresh.js';
 import {createSampleWeek} from './timecard-model.js';
 import './ch-timecard-day.js';
 

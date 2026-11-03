@@ -1,4 +1,4 @@
-import {freshElement} from './fresh.js';
+import {freshElement} from '../../fresh.js';
 import './ttt-board.js';
 
 const templateString = /*html*/`

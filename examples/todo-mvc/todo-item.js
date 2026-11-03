@@ -1,4 +1,4 @@
-import {freshElement} from '../fresh.js';
+import {freshElement} from '../../fresh.js';
 
 const templateString = /*html*/`
 <style>
