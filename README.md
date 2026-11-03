@@ -59,7 +59,7 @@ This example recreates the Hero Editor component in the Angular tutorial. Put `<
 
 Square brackets put data into an element, and round brackets get events out of it. Expressions are plain JavaScript, and `this` is the component. Inner loops can use the outer loop's item name, and `index` is always the innermost loop's position.
 
-HTML lowercases attribute names, so write camelCase properties with dashes: `[.text-content]` sets `textContent`. For the same reason, name your own events in lowercase or with dashes, such as `(square-click)`.
+HTML lowercases attribute names, but FreshJS still finds the element's real property: `[.textContent]` and `[.innerHTML]` work as written. For a component's own camelCase properties, use dashes: `[.row-data]` sets `rowData`. For the same reason, name your own events in lowercase or with dashes, such as `(square-click)`.
 
 ## Refreshing
 
@@ -92,7 +92,7 @@ HTML lowercases attribute names, so write camelCase properties with dashes: `[.t
 * Bound `javascript:` URLs in `href`, `src`, `action` and `formaction` are blocked.
 * Attribute bindings for events like `[onclick]` are refused, because they turn strings into code. Use `(click)` instead.
 * Templates are code. Never build a template string from user input. Use `{{ }}` bindings for data instead of `${ }`.
-* `[.inner-html]` inserts raw HTML. Only use it with HTML you trust or have sanitized.
+* `[.innerHTML]` inserts raw HTML. Only use it with HTML you trust or have sanitized.
 * Expressions are compiled with `new Function`, so a Content Security Policy must allow `'unsafe-eval'`.
 
 ## Examples and tests

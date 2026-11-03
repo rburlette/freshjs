@@ -21,9 +21,21 @@ function blockScriptUrl(name, value) {
 	return value;
 }
 
-// HTML lowercases attribute names, so [.text-content] is how you write the textContent property.
-function camelCase(name) {
-	return name.replace(/-([a-z])/g, (match, letter) => letter.toUpperCase());
+// HTML lowercases attribute names, so [.textContent] arrives as "textcontent". This finds the
+// element's real property: written with dashes ([.text-content]), or one that only differs in
+// capitals, such as innerHTML. Otherwise (say, a custom element's own property) it is the
+// dashes-to-camelCase name.
+function propertyName(element, name) {
+	let camelCase = name.replace(/-([a-z])/g, (match, letter) => letter.toUpperCase());
+	if(camelCase in element)
+		return camelCase;
+
+	let wanted = camelCase.toLowerCase();
+	for(let key in element)
+		if(key.toLowerCase() === wanted && key !== wanted) // never trade onChange for the browser's onchange
+			return key;
+
+	return camelCase;
 }
 
 // Reads a template once per component type and records where each binding is, as a path of
@@ -99,7 +111,7 @@ class freshTemplate {
 			if(isEvent)
 				this.add(path, eventBinder, value, {name: name.slice(1, -1)}, ['event']);
 			else if(name[1] === '.')
-				this.add(path, propertyBinder, value, {name: camelCase(name.slice(2, -1))});
+				this.add(path, propertyBinder, value, {name: propertyName(element, name.slice(2, -1))});
 			else if(name.startsWith('[on'))
 				throw this.error(name + ' would turn a string into code. Use (' + name.slice(3, -1) + ')="..." for events.');
 			else

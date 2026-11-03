@@ -142,6 +142,19 @@
 			equal(element.shadowRoot.querySelector('p').textContent, 'hi');
 		});
 
+		test('[.innerHTML], [.inner-html] and [.textContent] find the real property despite HTML lowercasing', () => {
+			let element = mount('<p [.innerHTML]="this.html"></p><p [.inner-html]="this.html"></p><p [.textContent]="this.html"></p>',
+				function() { this.html = '<b>bold</b>'; });
+			let [first, second, third] = element.shadowRoot.querySelectorAll('p');
+			equal(first.querySelector('b').textContent + ' ' + second.querySelector('b').textContent + ' ' + third.textContent, 'bold bold <b>bold</b>');
+		});
+
+		test('[.on-change] on a component sets its onChange, not the browser\'s onchange', () => {
+			let element = mount('<test-callbacks [.on-change]="this.changed"></test-callbacks>', function() { this.changed = () => 'yes'; });
+			let child = element.shadowRoot.querySelector('test-callbacks');
+			equal(typeof child.onChange + ' ' + child.onchange, 'function null');
+		});
+
 		test('list click handlers use the current item after the list changes', () => {
 			let element = mount('<button fjs-for="letter in this.letters" [.onclick]="() => this.clicked = letter">{{letter}}</button>',
 				function() { this.letters = ['a', 'b', 'c']; });
