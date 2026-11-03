@@ -55,6 +55,7 @@ This example recreates the Hero Editor component in the Angular tutorial. Put `<
 | `(click)="this.save()"` | Runs when the element fires the event, then refreshes the component. `event` is the event: `(input)="this.name = event.target.value"`. If the expression is a function, such as `(click)="this.save"`, it is called with the event. |
 | `fjs-if="this.visible"` | Adds or removes the element. |
 | `fjs-for="todo in this.todos"` | Repeats the element for each item. `index` is the item's position. Without a name, the item is called `item`. |
+| `fjs-key="todo.id"` | On an `fjs-for` element, keeps each item on its own row. See [Lists](#lists). |
 
 Square brackets put data into an element, and round brackets get events out of it. Expressions are plain JavaScript, and `this` is the component. Inner loops can use the outer loop's item name, and `index` is always the innermost loop's position.
 
@@ -68,13 +69,19 @@ HTML lowercases attribute names, so write camelCase properties with dashes: `[.t
 * Call `this.refresh()` yourself after other changes: in a timer, in a listener you added with `addEventListener`, after a promise you didn't return, or when the page has to update in the middle of a handler (for example, to focus an input you just showed).
 * Call `this.refreshAll()` when you change data that components elsewhere on the page also show. It refreshes the top-level component this one is inside, and everything in it.
 
+## Lists
+
+* Without `fjs-key`, rows are reused by position: when the list changes, each row shows whatever item is now at its position. That is fastest for rows that only display data.
+* Add `fjs-key` when rows have state of their own, such as focus, text typed into an input that isn't bound, or a child component's own fields, or when items are often added or removed near the top of a long list. Each item then keeps its own row, and adding, removing or moving items adds, removes or moves just those rows.
+* The key can be any value that is unique in the list, such as an id, or the item itself if it is an object: `fjs-key="todo"`. Two items with the same key is an error.
+* Reordering a whole keyed list moves its rows, which is slower than rewriting them, and a row that moves loses focus.
+
 ## Components
 
 * Pass data to child components with properties, and listen for the events they send: `<todo-item [.todo]="todo" (delete)="this.deleteTodo(todo)"></todo-item>`.
 * A child sends an event with `this.emit('delete')`, or `this.emit('delete', value)` to include a value, which the parent reads as `event.detail`. It is an ordinary DOM event, so components that aren't built with FreshJS can listen too.
 * Template expressions can use `this` and global names, but not the imports in your module. To use an imported function, call it from a component method.
 * Import a child component at the top of the parent's file, so it is defined before the parent uses it.
-* Lists reuse rows by position. When the list changes, a row's elements show the new item that is now at that position.
 * The usual web component lifecycle callbacks work. If you override `connectedCallback`, call `super.connectedCallback()`.
 * Don't give component fields or methods the same names as built-in element properties such as `title`, `id`, `hidden` or `remove`.
 * Each component type has one template string, and FreshJS reports an error if it changes between instances.

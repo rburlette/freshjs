@@ -47,6 +47,9 @@ class freshTemplate {
 			if(node.localName === 'style' || node.localName === 'script')
 				return;
 
+			if(node.hasAttribute('fjs-key') && !node.hasAttribute('fjs-for'))
+				throw this.error('fjs-key only works on an element that also has fjs-for.');
+
 			if(node.hasAttribute('fjs-if') || node.hasAttribute('fjs-for')) {
 				this.bindChildTemplate(node, path);
 				return;
@@ -125,13 +128,17 @@ class freshTemplate {
 			return;
 		}
 
+		let keyExpression = element.getAttribute('fjs-key');
 		element.removeAttribute('fjs-for');
+		element.removeAttribute('fjs-key');
 
 		let match = loop.match(/^\s*([\w$]+)\s+in\s+([\s\S]+)$/), // "todo in this.todos", or just "this.todos"
 			itemName = match ? match[1] : 'item',
-			names = [...new Set([...this.names, itemName, 'index'])]; // inner loops still see outer variables
+			names = [...new Set([...this.names, itemName, 'index'])], // inner loops still see outer variables
+			template = new freshTemplate(element, this.tagName, names),
+			key = keyExpression === null ? null : template.compile(keyExpression);
 
-		this.add(path, forBinder, match ? match[2] : loop, {itemName, template: new freshTemplate(element, this.tagName, names)});
+		this.add(path, forBinder, match ? match[2] : loop, {itemName, template, key, keyExpression});
 	}
 
 	add(path, binderClass, expression, options, params) {
@@ -186,11 +193,11 @@ class binder {
 		this.component = component;
 	}
 
-	evaluate(scope, event) {
+	evaluate(scope, event, evaluate = this.factory.evaluate, expression = this.factory.expression) {
 		try {
-			return this.factory.evaluate.call(this.component, scope, event);
+			return evaluate.call(this.component, scope, event);
 		} catch(error) {
-			throw new Error('<' + this.component.localName + '> error in "' + this.factory.expression + '": ' + error.message, {cause: error});
+			throw new Error('<' + this.component.localName + '> error in "' + expression + '": ' + error.message, {cause: error});
 		}
 	}
 
@@ -319,6 +326,11 @@ class forBinder extends binder {
 	refresh(scope) {
 		let list = this.evaluate(scope) || []; // null or undefined (e.g. still loading) shows nothing
 
+		if(this.factory.key) {
+			this.refreshKeyed(list, scope);
+			return;
+		}
+
 		for(let i = 0; i < list.length; i++) {
 			let row = this.rows[i];
 
@@ -339,6 +351,60 @@ class forBinder extends binder {
 			this.rows[i].element.remove();
 
 		this.shownCount = list.length;
+	}
+
+	// With fjs-key, each row belongs to one item. Adding, removing or moving items adds, removes or
+	// moves just those rows, so what is inside a row (focus, typed text, a child component's own
+	// state) stays with its item.
+	refreshKeyed(list, scope) {
+		let itemName = this.factory.itemName,
+			keyScope = this.keyScope = this.keyScope || Object.create(scope),
+			oldRows = this.keyedRows || new Map(),
+			rows = new Map(); // key -> row, in the new order
+
+		// match every item to its row first, so a duplicate key fails before anything changes
+		for(let i = 0; i < list.length; i++) {
+			keyScope[itemName] = list[i];
+			keyScope.index = i;
+			let key = this.evaluate(keyScope, undefined, this.factory.key, this.factory.keyExpression);
+
+			if(rows.has(key))
+				throw new Error('<' + this.component.localName + '> fjs-key="' + this.factory.keyExpression + '" gave two items the same key: ' + String(key));
+
+			let row = oldRows.get(key);
+			if(!row) {
+				row = this.factory.template.createInstance(this.component);
+				row.scope = Object.create(scope);
+			}
+
+			row.scope[itemName] = list[i];
+			row.scope.index = i;
+			rows.set(key, row);
+		}
+
+		for(let [key, row] of oldRows)
+			if(!rows.has(key))
+				row.element.remove();
+
+		// put the rows in order, moving only the ones that are out of place
+		let cursor = [...oldRows.values()].find(row => row.element.parentNode)?.element || this.node;
+
+		for(let row of rows.values()) {
+			row.refresh(row.scope); // fill in the row before it goes on the page
+
+			if(row.element === cursor) {
+				cursor = cursor.nextSibling;
+			} else if(cursor !== this.node && row.element === cursor.nextSibling) {
+				// the row at the cursor belongs further down: take it out until its turn comes
+				let outOfPlace = cursor;
+				cursor = row.element.nextSibling;
+				outOfPlace.remove();
+			} else {
+				cursor.before(row.element);
+			}
+		}
+
+		this.keyedRows = rows;
 	}
 }
 

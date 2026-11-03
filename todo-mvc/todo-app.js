@@ -80,7 +80,7 @@ const templateString = /*html*/`
 		Mark all as complete
 	</label>
 	<ul>
-		<li fjs-for="todo in this.shownTodos">
+		<li fjs-for="todo in this.shownTodos" fjs-key="todo">
 			<todo-item [.todo]="todo" (update)="this.save()" (delete)="this.deleteTodo(todo)"></todo-item>
 		</li>
 	</ul>
