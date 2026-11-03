@@ -13,12 +13,12 @@ const templateString = /*html*/`
         margin-left: 20px;
     }
 </style>
-<ttt-board [.squares]="this.history[this.stepNumber]" [.onsquareclick]="(squareNumber) => this.handleSquareClick(squareNumber)"></ttt-board>
+<ttt-board [.squares]="this.history[this.stepNumber]" (square-click)="this.handleSquareClick(event.detail)"></ttt-board>
 <div class="game-info">
     <div>{{this.statusMsg}}</div>
     <ol>
         <li fjs-for="this.history">
-            <button [.onclick]="() => this.jumpTo(index)">{{this.moveText(index)}}</button>
+            <button (click)="this.jumpTo(index)">{{this.moveText(index)}}</button>
         </li>
     </ol>
 </div>
@@ -56,14 +56,11 @@ class tttGame extends freshElement {
             this.history = this.history.slice(0, this.stepNumber + 1);
 
         this.xIsNext = !this.xIsNext;
-
-        this.refresh();
     }
 
     jumpTo(step) {
         this.stepNumber = step;
         this.xIsNext = (step % 2) === 0;
-        this.refresh();
     }
 
     get statusMsg() {

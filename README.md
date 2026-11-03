@@ -20,7 +20,7 @@ const templateString = /*html*/`
 <div><span>id: </span>{{this.heroInfo.Id}}</div>
 <div>
   <label>name:
-    <input [.value]="this.heroInfo.name" [.oninput]="e => this.onNameChange(e.target.value)" placeholder="name">
+    <input [.value]="this.heroInfo.name" (input)="this.onNameChange(event.target.value)" placeholder="name">
   </label>
   <span fjs-if="this.heroInfo.name == 'bob'">testing</span>
 </div>`;
@@ -37,14 +37,13 @@ class hero extends freshElement {
 
     onNameChange(value) {
         this.heroInfo.name = value;
-        this.refresh();
     }
 }
 
 customElements.define('fjs-hero', hero);
 ```
 
-This example recreates the Hero Editor component in the Angular tutorial. Put `<fjs-hero></fjs-hero>` on a page and it renders itself. After that, call `this.refresh()` whenever you change its data.
+This example recreates the Hero Editor component in the Angular tutorial. Put `<fjs-hero></fjs-hero>` on a page and it renders itself. When you type, `(input)` changes the name and the component refreshes by itself.
 
 ## Templates
 
@@ -53,18 +52,26 @@ This example recreates the Hero Editor component in the Angular tutorial. Put `<
 | `{{this.name}}` | Inserts text. It is always text, never HTML. |
 | `[title]="this.tip"` | Sets an attribute. `null`, `undefined` and `false` remove it, and `true` adds it with no value, so `[disabled]="this.busy"` works. |
 | `[.value]="this.name"` | Sets a DOM property. |
-| `[.onclick]="e => this.save()"` | Sets an event handler. Functions always run with `this` as the component, so `[.onclick]="this.save"` works too. |
+| `(click)="this.save()"` | Runs when the element fires the event, then refreshes the component. `event` is the event: `(input)="this.name = event.target.value"`. If the expression is a function, such as `(click)="this.save"`, it is called with the event. |
 | `fjs-if="this.visible"` | Adds or removes the element. |
 | `fjs-for="todo in this.todos"` | Repeats the element for each item. `index` is the item's position. Without a name, the item is called `item`. |
 
-Expressions are plain JavaScript, and `this` is the component. Inner loops can use the outer loop's item name, and `index` is always the innermost loop's position.
+Square brackets put data into an element, and round brackets get events out of it. Expressions are plain JavaScript, and `this` is the component. Inner loops can use the outer loop's item name, and `index` is always the innermost loop's position.
 
-HTML lowercases attribute names, so write camelCase properties with dashes: `[.text-content]` sets `textContent`, and `[.on-delete]` sets `onDelete`.
+HTML lowercases attribute names, so write camelCase properties with dashes: `[.text-content]` sets `textContent`. For the same reason, name your own events in lowercase or with dashes, such as `(square-click)`.
+
+## Refreshing
+
+* After an `(event)` binding runs, the component whose template it is in refreshes. If the expression returns a promise, as an `async` method does, it refreshes again when the promise resolves.
+* When a child sends an event with `this.emit('delete')`, the parent's `(delete)="..."` binding is in the parent's template, so the parent refreshes.
+* Refreshing a component refreshes the child components in its template too, after their properties are set. Only values that changed touch the page.
+* Call `this.refresh()` yourself after other changes: in a timer, in a listener you added with `addEventListener`, after a promise you didn't return, or when the page has to update in the middle of a handler (for example, to focus an input you just showed).
+* Call `this.refreshAll()` when you change data that components elsewhere on the page also show. It refreshes the top-level component this one is inside, and everything in it.
 
 ## Components
 
-* Pass data and callbacks to child components with properties: `<todo-item [.todo]="todo" [.on-delete]="() => this.deleteTodo(todo)"></todo-item>`.
-* Refreshing a component refreshes the child components in its template too, after their properties are set. A child whose changes only affect itself can just call its own `this.refresh()`.
+* Pass data to child components with properties, and listen for the events they send: `<todo-item [.todo]="todo" (delete)="this.deleteTodo(todo)"></todo-item>`.
+* A child sends an event with `this.emit('delete')`, or `this.emit('delete', value)` to include a value, which the parent reads as `event.detail`. It is an ordinary DOM event, so components that aren't built with FreshJS can listen too.
 * Template expressions can use `this` and global names, but not the imports in your module. To use an imported function, call it from a component method.
 * Import a child component at the top of the parent's file, so it is defined before the parent uses it.
 * Lists reuse rows by position. When the list changes, a row's elements show the new item that is now at that position.
@@ -76,7 +83,7 @@ HTML lowercases attribute names, so write camelCase properties with dashes: `[.t
 
 * `{{ }}` always inserts text, so user data can't add HTML or scripts to the page.
 * Bound `javascript:` URLs in `href`, `src`, `action` and `formaction` are blocked.
-* Attribute bindings for events like `[onclick]` are refused, because they turn strings into code. Use `[.onclick]` with a function.
+* Attribute bindings for events like `[onclick]` are refused, because they turn strings into code. Use `(click)` instead.
 * Templates are code. Never build a template string from user input. Use `{{ }}` bindings for data instead of `${ }`.
 * `[.inner-html]` inserts raw HTML. Only use it with HTML you trust or have sanitized.
 * Expressions are compiled with `new Function`, so a Content Security Policy must allow `'unsafe-eval'`.

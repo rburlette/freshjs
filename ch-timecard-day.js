@@ -46,7 +46,7 @@ const templateString = /*html*/`
     <ch-timecard-shift fjs-for="shift in this.day.shifts" [.shift]="shift" [.number]="index + 1" [.times]="this.day.times"></ch-timecard-shift>
 </div>
 <div class="add">
-    <button [.onclick]="() => this.addShift()">+ Add New Shift</button>
+    <button (click)="this.addShift()">+ Add New Shift</button>
 </div>
 `;
 
@@ -62,7 +62,6 @@ class chTimeCardDay extends freshElement {
 
     addShift() {
         timecard.addShift(this.day);
-        this.refresh();
     }
 }
 

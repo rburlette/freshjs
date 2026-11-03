@@ -4,9 +4,11 @@
 const freshTemplates = new Map(); // tag name -> parsed template, shared by every instance of that tag
 const rootScope = Object.freeze(Object.create(null)); // a component's own template has no loop variables
 
-// The user can change these by typing or clicking, so they are compared with what is on screen,
-// not just with the last value written. This keeps inputs in sync with your data, like React.
+// The user can change these by typing or clicking, so in form fields they are compared with what
+// the field shows, and only written when different. That keeps fields in sync with your data, and
+// leaves a field alone while someone types (writing to it then can upset phone keyboards).
 const userEditable = new Set(['value', 'checked', 'selected']);
+const formFields = new Set(['input', 'textarea', 'select', 'option']);
 
 // Bindings that load or navigate to a URL. A "javascript:" URL would run code, so it is blocked.
 const urlNames = new Set(['href', 'src', 'action', 'formaction', 'xlink:href']);
@@ -80,18 +82,23 @@ class freshTemplate {
 		node.nodeValue = '';
 	}
 
-	// [name]="expression" sets an attribute, [.name]="expression" sets a property
+	// [name]="expression" sets an attribute, [.name]="expression" sets a property,
+	// and (name)="expression" runs when the element fires that event
 	bindElement(element, path) {
 		for(let {name, value} of [...element.attributes]) {
-			if(name[0] !== '[' || name[name.length - 1] !== ']')
+			let isEvent = name[0] === '(' && name.endsWith(')');
+
+			if(!isEvent && (name[0] !== '[' || !name.endsWith(']')))
 				continue;
 
 			element.removeAttribute(name);
 
-			if(name[1] === '.')
+			if(isEvent)
+				this.add(path, eventBinder, value, {name: name.slice(1, -1)}, ['event']);
+			else if(name[1] === '.')
 				this.add(path, propertyBinder, value, {name: camelCase(name.slice(2, -1))});
 			else if(name.startsWith('[on'))
-				throw this.error(name + ' would turn a string into code. Use [.' + name.slice(1, -1) + ']="e => ..." for events.');
+				throw this.error(name + ' would turn a string into code. Use (' + name.slice(3, -1) + ')="..." for events.');
 			else
 				this.add(path, attributeBinder, value, {name: name.slice(1, -1)});
 		}
@@ -127,16 +134,16 @@ class freshTemplate {
 		this.add(path, forBinder, match ? match[2] : loop, {itemName, template: new freshTemplate(element, this.tagName, names)});
 	}
 
-	add(path, binderClass, expression, options) {
-		let evaluate = expression === undefined ? null : this.compile(expression);
+	add(path, binderClass, expression, options, params) {
+		let evaluate = expression === undefined ? null : this.compile(expression, params);
 		this.factories.push({path, binderClass, expression, evaluate, ...options});
 	}
 
 	// Expressions are plain JavaScript, compiled once per template. They run with `this` set to
 	// the component, and loop variables passed in. Templates are code: never build them from user input.
-	compile(expression) {
+	compile(expression, params = []) {
 		try {
-			return new Function('{' + this.names.join(',') + '}', 'return (' + expression + ');');
+			return new Function('{' + this.names.join(',') + '}', ...params, 'return (' + expression + ');');
 		} catch(error) {
 			throw this.error('could not read "' + expression + '": ' + error.message);
 		}
@@ -179,9 +186,9 @@ class binder {
 		this.component = component;
 	}
 
-	evaluate(scope) {
+	evaluate(scope, event) {
 		try {
-			return this.factory.evaluate.call(this.component, scope);
+			return this.factory.evaluate.call(this.component, scope, event);
 		} catch(error) {
 			throw new Error('<' + this.component.localName + '> error in "' + this.factory.expression + '": ' + error.message, {cause: error});
 		}
@@ -224,6 +231,11 @@ class attributeBinder extends binder {
 }
 
 class propertyBinder extends binder {
+	constructor(node, factory, component) {
+		super(node, factory, component);
+		this.isUserEditable = userEditable.has(factory.name) && formFields.has(node.localName);
+	}
+
 	hasChanged(value) {
 		// a function like "() => this.select(item)" is new on every refresh; rather than replace the
 		// handler each time, point the wrapper already on the element at the newest one
@@ -232,8 +244,11 @@ class propertyBinder extends binder {
 			return false;
 		}
 
-		let name = this.factory.name;
-		return value !== this.oldValue || (userEditable.has(name) && value !== this.node[name]);
+		// compare with what the field shows, in the form the browser keeps it
+		if(this.isUserEditable)
+			return this.factory.name === 'value' ? this.node.value !== String(value ?? '') : this.node[this.factory.name] !== Boolean(value);
+
+		return value !== this.oldValue;
 	}
 
 	update(value) {
@@ -241,13 +256,38 @@ class propertyBinder extends binder {
 
 		if(typeof value === 'function') {
 			// one stable wrapper per binding: it calls the latest function with `this` as the component,
-			// so [.onclick]="this.save" works and list rows never call a stale item's handler
+			// so a method like this.save works and list rows never call a stale item's function
 			let binder = this;
 			this.handler = value;
 			value = function() { return binder.handler.apply(binder.component, arguments); };
 		}
 
 		this.node[name] = blockScriptUrl(name, value ?? null);
+	}
+}
+
+// (click)="expression" runs the expression when the element fires that event, with the event
+// available as `event`. If the expression is a function, such as this.save, it is called with the
+// event. Then the component refreshes. It uses addEventListener, so it works for any event,
+// including ones a child component sends with emit(), and returning false doesn't cancel the event.
+class eventBinder extends binder {
+	constructor(node, factory, component) {
+		super(node, factory, component);
+		this.scope = rootScope;
+
+		node.addEventListener(factory.name, event => {
+			let result = this.evaluate(this.scope, event);
+
+			if(typeof result === 'function')
+				result = result.call(component, event);
+
+			refreshAfterEvent(component, result);
+		});
+	}
+
+	// nothing on the page to update; just keep the row's loop variables for the next event
+	refresh(scope) {
+		this.scope = scope;
 	}
 }
 
@@ -302,6 +342,17 @@ class forBinder extends binder {
 	}
 }
 
+// After an event binding runs, the component that owns the template refreshes, so an event a child
+// sends to its parent refreshes the parent. A handler that returns a promise (an async function)
+// refreshes again when it resolves.
+function refreshAfterEvent(component, result) {
+	if(!component.refreshing) // events such as blur can fire while a refresh is changing the page
+		component.refresh();
+
+	if(result && typeof result.then === 'function')
+		result.then(() => component.refresh());
+}
+
 // Refreshes a child component after its properties are set.
 class componentBinder {
 	constructor(node, factory, component) {
@@ -344,8 +395,29 @@ export class freshElement extends HTMLElement {
 			this.refresh();
 	}
 
-	// Re-evaluates every binding and updates only what changed. Call it after you change data.
+	// Re-evaluates every binding and updates only what changed. (event) bindings call it for you;
+	// call it yourself after other changes, such as in a timer or a listener you added.
 	refresh() {
-		this.templateInstance.refresh(rootScope);
+		this.refreshing = true;
+		try {
+			this.templateInstance.refresh(rootScope);
+		} finally {
+			this.refreshing = false;
+		}
+	}
+
+	// Sends an event that the parent can listen to with (name)="...". The value is in event.detail.
+	emit(name, detail) {
+		return this.dispatchEvent(new CustomEvent(name, {detail}));
+	}
+
+	// Refreshes the top-level component this one is inside, and everything in it. Use it when you
+	// change data that components elsewhere on the page also show.
+	refreshAll() {
+		let top = this;
+		while(top.freshParent)
+			top = top.freshParent;
+
+		top.refresh();
 	}
 }
