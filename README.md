@@ -110,6 +110,7 @@ What's included:
   * [`tic-tac-toe`](examples/tic-tac-toe): a board component that sends events to its game.
   * [`hero`](examples/hero): the Hero Editor from the Angular tutorial, shown at the top of this README.
 * [`examples/todo-mvc`](examples/todo-mvc): a todo app with a child component, editing, filters, keyed rows and saving to localStorage.
+* [`examples/realworld`](examples/realworld): the RealWorld "Conduit" blogging app, with routing, sign in, articles, comments and more. It has its own small server: run `node examples/realworld/server.mjs` and open http://localhost:3000.
 * [`test.html`](test.html): open it in a browser to run the tests.
 
 ## License
