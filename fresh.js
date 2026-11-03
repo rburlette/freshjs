@@ -1,314 +1,351 @@
-const freshTemplates = {};
-const walkerNodeFilter = NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_COMMENT;
-const emptyArray = [];
-const zeroWidthString = '\u200B';
+// FreshJS: React-like components built on native web components.
+// One file, no dependencies, no build step. Import freshElement and extend it.
 
+const freshTemplates = new Map(); // tag name -> parsed template, shared by every instance of that tag
+const rootScope = Object.freeze(Object.create(null)); // a component's own template has no loop variables
+
+// The user can change these by typing or clicking, so they are compared with what is on screen,
+// not just with the last value written. This keeps inputs in sync with your data, like React.
+const userEditable = new Set(['value', 'checked', 'selected']);
+
+// Bindings that load or navigate to a URL. A "javascript:" URL would run code, so it is blocked.
+const urlNames = new Set(['href', 'src', 'action', 'formaction', 'xlink:href']);
+
+function blockScriptUrl(name, value) {
+	// browsers ignore control characters and spaces in a URL scheme, so strip them before checking
+	if(urlNames.has(name) && /^javascript:/i.test(String(value).replace(/[\u0000- ]/g, '')))
+		return 'unsafe:' + value;
+
+	return value;
+}
+
+// HTML lowercases attribute names, so [.text-content] is how you write the textContent property.
+function camelCase(name) {
+	return name.replace(/-([a-z])/g, (match, letter) => letter.toUpperCase());
+}
+
+// Reads a template once per component type and records where each binding is, as a path of
+// child indexes. Every instance is then a fast deep copy plus binders pointing into that copy.
 class freshTemplate {
-	constructor(rootNode, fieldName) {
-		this.factories = [];
-		this.nodeCounts = new Array(100);
-		this.walkerDepth = -1;
+	constructor(rootNode, tagName, names) {
 		this.rootNode = rootNode;
-		this.fieldName = fieldName;
-		this.createFactories(rootNode);
+		this.tagName = tagName;
+		this.names = names; // loop variables visible here, e.g. ['todo', 'index']
+		this.factories = [];
+		this.walk(rootNode, []);
 	}
 
-	makeNodeFunction() {
-		for(var nodeEvalString = 'return rootNode', i = 0; i <= this.walkerDepth; i++)
-			nodeEvalString += ('.childNodes[' + this.nodeCounts[i].count + ']');
-
-		return new Function('rootNode', nodeEvalString + ';');
-	}
-
-	createFactories(currentNode) {
-		let previousNode = currentNode,
-			childFactories = [];
-
-		let walker = document.createTreeWalker(
-			currentNode,
-			walkerNodeFilter,
-			(node) => {
-				if(node.parentNode === previousNode)
-					this.nodeCounts[++this.walkerDepth] = {parent: node.parentNode, count: -1};
-				else while(this.nodeCounts[this.walkerDepth].parent !== node.parentNode)
-					this.walkerDepth--;
-
-				previousNode = node;
-				this.nodeCounts[this.walkerDepth].count++;
-
-				if(node.nodeType === 3 || (node.nodeType === 1 && node.localName !== 'style' && node.localName != 'script'))
-					return NodeFilter.FILTER_ACCEPT;
-
-				return NodeFilter.FILTER_REJECT;
-			},
-			false);
-
-		do {
-			switch(currentNode.nodeType) {
-				case 3:
-					this.bindTextNode(currentNode);
-					continue;
-				case 1:
-					var factory =
-						currentNode.hasAttribute('fjs-if') ? ifBinderFactory :
-						currentNode.hasAttribute('fjs-for') ? forBinderFactory : null;
-
-					if(factory) {
-						childFactories.push(new factory(currentNode, this.makeNodeFunction(), this.fieldName));
-						walker.currentNode = childFactories[childFactories.length - 1].placeholder;
-						continue;
-					}
-
-					this.bindElement(currentNode);
-					continue;
-			}
-		} while ((currentNode = walker.nextNode()) !== null);
-
-		this.factories = [ ...childFactories, ...this.factories];
-	}
-
-	bindTextNode(node) {
-		let start, end;
-		while((start = node.nodeValue.indexOf('{{')) !== -1 && (end = node.nodeValue.indexOf('}}', start)) !== -1) {
-			let lastOffset = node.nodeValue.length - (end + 2);
-			let matchNode = start > 0 ? this.splitTextNode(node, start) : node;
-
-			this.factories.push(new textBinderFactory(this.makeNodeFunction(), matchNode.nodeValue.substring(2, end - start), this.fieldName));
-
-			node = lastOffset > 0 ? this.splitTextNode(matchNode, matchNode.nodeValue.length - lastOffset) : matchNode;
-			matchNode.nodeValue = zeroWidthString;
+	walk(node, path) {
+		if(node.nodeType === Node.TEXT_NODE) {
+			this.bindText(node, path);
+			return;
 		}
+
+		if(node.nodeType === Node.ELEMENT_NODE) {
+			if(node.localName === 'style' || node.localName === 'script')
+				return;
+
+			if(node.hasAttribute('fjs-if') || node.hasAttribute('fjs-for')) {
+				this.bindChildTemplate(node, path);
+				return;
+			}
+		}
+
+		// children first, so a <select>'s <option>s exist before its value is set
+		for(let i = 0; i < node.childNodes.length; i++)
+			this.walk(node.childNodes[i], [...path, i]);
+
+		if(node.nodeType === Node.ELEMENT_NODE)
+			this.bindElement(node, path);
 	}
 
-	splitTextNode(node, offset) {
-		this.nodeCounts[this.walkerDepth].count++;
-		return node.splitText(offset);
+	// "Hi {{this.name}}!" is split into three text nodes: "Hi ", the bound one, and "!".
+	// Splitting adds the rest of the text as the next sibling, which the walk visits next.
+	bindText(node, path) {
+		let start = node.nodeValue.indexOf('{{'),
+			end = node.nodeValue.indexOf('}}', start);
+
+		if(start === -1 || end === -1)
+			return;
+
+		if(start > 0) {
+			node.splitText(start);
+			return;
+		}
+
+		if(end + 2 < node.nodeValue.length)
+			node.splitText(end + 2);
+
+		this.add(path, textBinder, node.nodeValue.slice(2, end));
+		node.nodeValue = '';
 	}
 
-	bindElement(element) {
-		// loop in reverse, so we can remove attributes while still looping
-		for(let i = element.attributes.length - 1; i >= 0; i--) {
-			let attrName = element.attributes[i].name;
-
-			if(attrName[0] !== '[' || attrName[attrName.length - 1] !== ']')
+	// [name]="expression" sets an attribute, [.name]="expression" sets a property
+	bindElement(element, path) {
+		for(let {name, value} of [...element.attributes]) {
+			if(name[0] !== '[' || name[name.length - 1] !== ']')
 				continue;
 
-			let factoryClass = element.attributes[i].name[1] === '.' ? propertyBinderFactory : attributeBinderFactory;
+			element.removeAttribute(name);
 
-			this.factories.push(new factoryClass(element.attributes[i], this.makeNodeFunction(), this.fieldName));
-			element.removeAttribute(attrName);
+			if(name[1] === '.')
+				this.add(path, propertyBinder, value, {name: camelCase(name.slice(2, -1))});
+			else if(name.startsWith('[on'))
+				throw this.error(name + ' would turn a string into code. Use [.' + name.slice(1, -1) + ']="e => ..." for events.');
+			else
+				this.add(path, attributeBinder, value, {name: name.slice(1, -1)});
 		}
 
-		if((customElements.get(element.localName) || Object).prototype instanceof freshElement)
-			this.factories.push(new freshElementBinderFactory(this.makeNodeFunction()));
+		// child components refresh after their properties are set, so data flows top-down
+		if(element.localName.includes('-'))
+			this.add(path, componentBinder);
 	}
 
-	createInstance(thisArg) {
-		return new freshTemplateInstance(this.rootNode.cloneNode(true), thisArg, this.factories);
-	}
-}
+	// fjs-if="expression" and fjs-for="item in expression" make their element a nested
+	// template, and leave a comment in its place to mark where it goes.
+	bindChildTemplate(element, path) {
+		let loop = element.getAttribute('fjs-for');
 
-class freshElementBinderFactory {
-	constructor(nodeFunction) {
-		this.build = nodeFunction;
-	}
-}
+		if(loop !== null && element.hasAttribute('fjs-if'))
+			throw this.error('put fjs-if and fjs-for on separate elements, one inside the other.');
 
-class binderFactory {
-	constructor(binderClass, nodeFunction, valueEvalString, fieldName, data) {
-		this.binderClass = binderClass;
-		this.nodeFunction = nodeFunction;
-		this.valueFunction = new Function(fieldName || 'item', 'index', 'return (' + valueEvalString + ');');
-		this.data = data;
+		element.replaceWith(document.createComment(loop === null ? 'fjs-if' : 'fjs-for'));
+
+		if(loop === null) {
+			let condition = element.getAttribute('fjs-if');
+			element.removeAttribute('fjs-if');
+			this.add(path, ifBinder, condition, {template: new freshTemplate(element, this.tagName, this.names)});
+			return;
+		}
+
+		element.removeAttribute('fjs-for');
+
+		let match = loop.match(/^\s*([\w$]+)\s+in\s+([\s\S]+)$/), // "todo in this.todos", or just "this.todos"
+			itemName = match ? match[1] : 'item',
+			names = [...new Set([...this.names, itemName, 'index'])]; // inner loops still see outer variables
+
+		this.add(path, forBinder, match ? match[2] : loop, {itemName, template: new freshTemplate(element, this.tagName, names)});
 	}
 
-	build(rootNode, thisArg) {
-		return new this.binderClass(this.nodeFunction(rootNode), this.valueFunction.bind(thisArg), thisArg, this.data);
+	add(path, binderClass, expression, options) {
+		let evaluate = expression === undefined ? null : this.compile(expression);
+		this.factories.push({path, binderClass, expression, evaluate, ...options});
 	}
-}
 
-class textBinderFactory extends binderFactory {
-	constructor(nodeFunction, valueEvalString, fieldName) {
-		super(textBinder, nodeFunction, valueEvalString, fieldName);
+	// Expressions are plain JavaScript, compiled once per template. They run with `this` set to
+	// the component, and loop variables passed in. Templates are code: never build them from user input.
+	compile(expression) {
+		try {
+			return new Function('{' + this.names.join(',') + '}', 'return (' + expression + ');');
+		} catch(error) {
+			throw this.error('could not read "' + expression + '": ' + error.message);
+		}
 	}
-}
 
-class propertyBinderFactory extends binderFactory {
-	constructor(attribute, nodeFunction, fieldName) {
-		super(propertyBinder, nodeFunction, attribute.value, fieldName, attribute.name.substring(2, attribute.name.length - 1));
+	error(message) {
+		return new Error('<' + this.tagName + '> ' + message);
 	}
-}
 
-class attributeBinderFactory extends binderFactory {
-	constructor(attribute, nodeFunction, fieldName) {
-		super(attributeBinder, nodeFunction, attribute.value, fieldName, attribute.name.substring(1, attribute.name.length - 1));
-	}
-}
-
-class childBinderFactory extends binderFactory {
-	constructor(childBinderClass, element, nodeFunction, valueEvalString, fieldName, childFieldName, attributeName) {
-		super(childBinderClass, nodeFunction, valueEvalString, fieldName);
-		this.placeholder = element.parentNode.insertBefore(document.createComment(attributeName), element.nextSibling);
-		element.remove();
-		element.removeAttribute(attributeName);
-		this.data = new freshTemplate(element, childFieldName);
-	}
-}
-
-class ifBinderFactory extends childBinderFactory {
-	constructor(element, nodeFunction, fieldName) {
-		super(ifBinder, element, nodeFunction, element.getAttribute('fjs-if'), fieldName, fieldName, 'fjs-if');
+	createInstance(component) {
+		return new freshTemplateInstance(this, component);
 	}
 }
 
-class forBinderFactory extends childBinderFactory {
-	constructor(element, nodeFunction, fieldName) {
-		let evalInfo = element.getAttribute('fjs-for').split(' in ', 2);
-		super(forBinder, element, nodeFunction, evalInfo[evalInfo.length - 1], fieldName, evalInfo.length === 2 ? evalInfo[0] : 'item', 'fjs-for');
+// One rendered copy of a template, with a binder for each binding in it.
+class freshTemplateInstance {
+	constructor(template, component) {
+		// importNode (unlike cloneNode) upgrades child components right away, so they can be refreshed
+		this.element = document.importNode(template.rootNode, true);
+		this.binders = template.factories.map(factory => {
+			let node = this.element;
+			for(let i of factory.path)
+				node = node.childNodes[i];
+
+			return new factory.binderClass(node, factory, component);
+		});
+	}
+
+	refresh(scope) {
+		for(let i = 0; i < this.binders.length; i++)
+			this.binders[i].refresh(scope);
 	}
 }
 
+// A binder keeps one spot in the DOM in sync with one expression, and only touches the DOM when the value changes.
 class binder {
-	constructor(node, valueFunction, defaultValue, thisArg, data) {
+	constructor(node, factory, component) {
 		this.node = node;
-		this.valueFunction = valueFunction;
-		this.defaultValue = defaultValue;
-		this.thisArg = thisArg;
-		this.data = data;
+		this.factory = factory;
+		this.component = component;
 	}
 
-	hasChanged(newValue) {
-		return newValue !== this.oldValue;
+	evaluate(scope) {
+		try {
+			return this.factory.evaluate.call(this.component, scope);
+		} catch(error) {
+			throw new Error('<' + this.component.localName + '> error in "' + this.factory.expression + '": ' + error.message, {cause: error});
+		}
 	}
 
-	refresh(item, index) {
-		let newValue = this.valueFunction(item, index);
+	refresh(scope) {
+		let value = this.evaluate(scope);
 
-		if(newValue == null)
-			newValue = this.defaultValue;
+		if(this.hasChanged(value))
+			this.update(value);
 
-		if(this.hasChanged(newValue, item, index))
-			this.update(newValue);
-
-		this.oldValue = newValue;
-	}
-}
-
-class propertyBinder extends binder {
-	constructor(element, valueFunction, thisArg, propertyName) {
-		super(element, valueFunction, null, thisArg, propertyName);
-		this.propertyName = propertyName;
+		this.oldValue = value;
 	}
 
-	hasChanged(newValue) {
-		return typeof this.oldValue !== 'function' && this.oldValue !== newValue;
-	}
-
-	update(newValue) {
-		this.node[this.propertyName] = newValue;
-	}
-}
-
-class attributeBinder extends binder {
-	constructor(element, valueFunction, thisArg, attributeName) {
-		super(element, valueFunction, null, thisArg, attributeName);
-	}
-
-	update(newValue) {
-		if(newValue == null)
-			this.node.removeAttribute(this.data);
-		else
-			this.node.setAttribute(this.data, newValue);
+	hasChanged(value) {
+		return value !== this.oldValue;
 	}
 }
 
 class textBinder extends binder {
-	constructor(textNode, valueFunction, thisArg) {
-		super(textNode, valueFunction, zeroWidthString, thisArg);
+	update(value) {
+		this.node.nodeValue = value ?? ''; // always text, never HTML
+	}
+}
+
+class attributeBinder extends binder {
+	update(value) {
+		let name = this.factory.name;
+
+		// boolean attributes like disabled and hidden are on when present, so false removes them;
+		// aria-* attributes need the words "true" and "false", so they are left as they are
+		if(typeof value === 'boolean' && !name.startsWith('aria-'))
+			value = value ? '' : null;
+
+		if(value == null)
+			this.node.removeAttribute(name);
+		else
+			this.node.setAttribute(name, blockScriptUrl(name, value));
+	}
+}
+
+class propertyBinder extends binder {
+	hasChanged(value) {
+		// a function like "() => this.select(item)" is new on every refresh; rather than replace the
+		// handler each time, point the wrapper already on the element at the newest one
+		if(typeof value === 'function' && typeof this.oldValue === 'function') {
+			this.handler = value;
+			return false;
+		}
+
+		let name = this.factory.name;
+		return value !== this.oldValue || (userEditable.has(name) && value !== this.node[name]);
 	}
 
-	update(newValue) {
-		this.node.nodeValue = newValue;
+	update(value) {
+		let name = this.factory.name;
+
+		if(typeof value === 'function') {
+			// one stable wrapper per binding: it calls the latest function with `this` as the component,
+			// so [.onclick]="this.save" works and list rows never call a stale item's handler
+			let binder = this;
+			this.handler = value;
+			value = function() { return binder.handler.apply(binder.component, arguments); };
+		}
+
+		this.node[name] = blockScriptUrl(name, value ?? null);
 	}
 }
 
 class ifBinder extends binder {
-	constructor(element, valueFunction, thisArg, template) {
-		super(element, valueFunction, false, thisArg, template.createInstance(thisArg));
-	}
+	refresh(scope) {
+		let show = Boolean(this.evaluate(scope));
 
-	hasChanged(newValue, item, index) {
-		if(newValue)
-			this.data.refresh(item, index);
+		if(show) {
+			this.instance = this.instance || this.factory.template.createInstance(this.component); // built when first shown
+			this.instance.refresh(scope);
+		}
 
-		return newValue !== this.oldValue;
-	}
+		if(show && !this.shown)
+			this.node.before(this.instance.element);
+		else if(!show && this.shown)
+			this.instance.element.remove();
 
-	update(newValue) {
-		if(newValue)
-			this.node.parentNode.insertBefore(this.data.element, this.node);
-		else
-			this.data.element.remove();
+		this.shown = show;
 	}
 }
 
 class forBinder extends binder {
-	constructor(element, valueFunction, thisArg, template) {
-		super(element, valueFunction, emptyArray, thisArg, template);
-		this.rows = [];
-		this.previousLength = 0;
+	constructor(node, factory, component) {
+		super(node, factory, component);
+		this.rows = []; // rows are kept and reused by position, so lists that grow again are cheap
+		this.shownCount = 0;
 	}
 
-	refresh(item, index) {
-		let newValue = this.valueFunction(item, index);
+	refresh(scope) {
+		let list = this.evaluate(scope) || []; // null or undefined (e.g. still loading) shows nothing
 
-		for(let i = 0; i < newValue.length; i++) {
-			if(!this.rows[i])
-				this.rows[i] = this.data.createInstance(this.thisArg);
+		for(let i = 0; i < list.length; i++) {
+			let row = this.rows[i];
 
-			if(i >= this.previousLength)
-				this.node.parentNode.insertBefore(this.rows[i].element, this.node);
+			if(!row) {
+				row = this.rows[i] = this.factory.template.createInstance(this.component);
+				row.scope = Object.create(scope); // the row can also see the loop variables around it
+			}
 
-			this.rows[i].refresh(newValue[i], i);
+			row.scope[this.factory.itemName] = list[i];
+			row.scope.index = i;
+			row.refresh(row.scope); // fill in the row before it goes on the page
+
+			if(i >= this.shownCount)
+				this.node.before(row.element);
 		}
 
-		for(let i = newValue.length; i < this.previousLength; i++)
+		for(let i = list.length; i < this.shownCount; i++)
 			this.rows[i].element.remove();
 
-		this.previousLength = newValue.length;
+		this.shownCount = list.length;
 	}
 }
 
-class freshTemplateInstance {
-	constructor(element, thisArg, factories) {
-		this.element = element;
-		this.binders = new Array(factories.length);
-		for(let i = 0; i < factories.length; i++)
-			this.binders[i] = factories[i].build(element, thisArg);
+// Refreshes a child component after its properties are set.
+class componentBinder {
+	constructor(node, factory, component) {
+		this.node = node;
+		node.freshParent = component; // the parent renders this child, so it doesn't render itself
 	}
 
-	refresh(item, index) {
-		for(let i = 0; i < this.binders.length; i++)
-			this.binders[i].refresh(item, index);
+	refresh() {
+		if(this.node instanceof freshElement) // false until the child's class is defined
+			this.node.refresh();
 	}
 }
 
 export class freshElement extends HTMLElement {
-	constructor(templateString) {
+	constructor(templateString = '') {
 		super();
 
-		if(!freshTemplates[this.localName]) {
-			const template = document.createElement('template');
-			template.innerHTML = templateString || '';
-			freshTemplates[this.localName] = new freshTemplate(template.content);
+		let template = freshTemplates.get(this.localName);
+
+		if(!template) {
+			let element = document.createElement('template');
+			element.innerHTML = templateString;
+			template = new freshTemplate(element.content, this.localName, []);
+			template.source = templateString;
+			freshTemplates.set(this.localName, template);
+		} else if(template.source !== templateString) {
+			// A template is compiled once and is code. If it changed per instance, data was probably
+			// put in it with ${...}; that would be ignored here, and unsafe if the data came from a user.
+			throw new Error('<' + this.localName + '> every instance must use the same template. Put changing values in {{ }} bindings, not in the template string.');
 		}
 
-		this.templateInstance = freshTemplates[this.localName].createInstance(this);
+		this.templateInstance = template.createInstance(this);
 		this.attachShadow({mode: 'open'}).appendChild(this.templateInstance.element);
-		this.context = {};
 	}
 
+	// A component renders when it is added to the page, unless it sits in another component's
+	// template; then that parent renders it. If you override this, call super.connectedCallback().
+	connectedCallback() {
+		if(!this.freshParent)
+			this.refresh();
+	}
+
+	// Re-evaluates every binding and updates only what changed. Call it after you change data.
 	refresh() {
-		this.templateInstance.refresh();
+		this.templateInstance.refresh(rootScope);
 	}
 }

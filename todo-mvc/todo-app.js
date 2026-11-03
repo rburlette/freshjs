@@ -1,147 +1,165 @@
 import {freshElement} from '../fresh.js';
 import './todo-item.js';
 
-const app = {
-	ALL_TODOS: 'all',
-	ACTIVE_TODOS: 'active',
-	COMPLETED_TODOS: 'completed'
-};
-
-const ENTER_KEY = 13;
+const storageKey = 'freshjs-todos';
 
 const templateString = /*html*/`
-<header className="header">
-	<h1>todos</h1>
-	<input
-		class="new-todo"
-		placeholder="What needs to be done?"
-		[.value]="this.newTodo" [.onkeydown]="this.handleNewTodoKeyDown"
-		[.onchange]="this.handleChange"
-		autoFocus
-	/>
-</header>
-<section fjs-if="this.todos.length > 0" class="main">
-	<input
-		id="toggle-all"
-		class="toggle-all"
-		type="checkbox"
-		[.onchange]="this.toggleAll"
-		[.checked]="activeTodoCount === 0"
-	/>
-	<label for="toggle-all"></label>
-	<ul class="todo-list">
-		<li fjs-for="todo in this.todos">
-			<todo-item [.state]="todo"></todo-item>
+<style>
+	:host {
+		display: block;
+		max-width: 550px;
+		margin: 40px auto;
+		font: 16px sans-serif;
+		color: #333;
+	}
+
+	h1 {
+		margin: 0 0 16px;
+		text-align: center;
+		font-size: 64px;
+		font-weight: 200;
+		color: #b83f45;
+	}
+
+	.new-todo {
+		width: 100%;
+		box-sizing: border-box;
+		padding: 12px;
+		font: inherit;
+	}
+
+	ul {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+
+	li {
+		border-bottom: 1px solid #ededed;
+	}
+
+	footer {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		padding: 10px 0;
+		font-size: 14px;
+	}
+
+	.count {
+		flex: 1;
+	}
+
+	a {
+		padding: 2px 6px;
+		border: 1px solid transparent;
+		color: inherit;
+		text-decoration: none;
+	}
+
+	a.selected {
+		border-color: #e0b0b0;
+		border-radius: 3px;
+	}
+
+	button {
+		background: none;
+		border: none;
+		font: inherit;
+		cursor: pointer;
+	}
+</style>
+<h1>todos</h1>
+<input class="new-todo" aria-label="New todo" placeholder="What needs to be done?" autofocus
+	[.value]="this.newTitle"
+	[.oninput]="e => this.newTitle = e.target.value"
+	[.onkeydown]="e => e.key === 'Enter' && this.addTodo()">
+<section fjs-if="this.todos.length > 0">
+	<label>
+		<input type="checkbox" [.checked]="this.activeCount === 0" [.onchange]="e => this.toggleAll(e.target.checked)">
+		Mark all as complete
+	</label>
+	<ul>
+		<li fjs-for="todo in this.shownTodos">
+			<todo-item [.todo]="todo" [.on-change]="this.save" [.on-delete]="() => this.deleteTodo(todo)"></todo-item>
 		</li>
 	</ul>
+	<footer>
+		<span class="count">{{this.activeCount}} {{this.activeCount === 1 ? 'item' : 'items'}} left</span>
+		<a href="#/" [class]="this.filter === 'all' && 'selected'">All</a>
+		<a href="#/active" [class]="this.filter === 'active' && 'selected'">Active</a>
+		<a href="#/completed" [class]="this.filter === 'completed' && 'selected'">Completed</a>
+		<button fjs-if="this.activeCount < this.todos.length" [.onclick]="() => this.clearCompleted()">Clear completed</button>
+	</footer>
 </section>
-<todo-footer
-	[.count]="activeTodoCount"
-	[.completedcount]="completedCount"
-	[.nowshowing]="this.nowShowing"
-	[.onclearcompleted]="this.clearCompleted"
-></todo-footer>
 `;
 
 class todoApp extends freshElement {
 	constructor() {
 		super(templateString);
 
-		this._todos = [];
-
-		this.refresh();
+		this.todos = JSON.parse(localStorage.getItem(storageKey)) || [];
+		this.newTitle = '';
+		this.onHashChange = () => this.refresh();
 	}
 
-	set todos(todoArray) {
-		this._todos = todoArray;
-		this.refreshShownTodos();
+	// normal web component lifecycle callbacks work; just call super.connectedCallback()
+	connectedCallback() {
+		window.addEventListener('hashchange', this.onHashChange);
+		super.connectedCallback();
 	}
 
-	get todos() {
-		return this._todos;
+	disconnectedCallback() {
+		window.removeEventListener('hashchange', this.onHashChange);
 	}
 
-	refreshShownTodos() {
-		this.completedCount = 0;
-
-		this.shownTodos = this._todos.filter(todo =>  {
-			if(todo.completed)
-				this.completedCount++;
-
-			switch (this.nowShowing) {
-				case app.ACTIVE_TODOS:
-				return !todo.completed;
-			case app.COMPLETED_TODOS:
-				return todo.completed;
-			default:
-				return true;
-			}
-		});
-
-		this.totalCount = this._todos.length;
-		this.remainingCount = this.totalCount - this.completedCount;
+	get filter() {
+		return location.hash.slice(2) || 'all';
 	}
 
-	addTodo(text) {
-		this.todos.add({ text: text });
+	get activeCount() {
+		return this.todos.filter(todo => !todo.completed).length;
 	}
 
-	handleChange(event) {
-		this.setState({newTodo: event.target.value});
+	get shownTodos() {
+		if(this.filter === 'all')
+			return this.todos;
+
+		return this.todos.filter(todo => todo.completed === (this.filter === 'completed'));
 	}
 
-	handleNewTodoKeyDown(event) {
-		if (event.keyCode !== ENTER_KEY) {
+	addTodo() {
+		let title = this.newTitle.trim();
+
+		if(!title)
 			return;
-		}
 
-		event.preventDefault();
-
-		var val = this.state.newTodo.trim();
-
-		if (val) {
-			this.props.model.addTodo(val);
-			this.setState({newTodo: ''});
-		}
+		this.todos.push({title, completed: false});
+		this.newTitle = '';
+		this.save();
 	}
 
-	toggleAll (event) {
-		var checked = event.target.checked;
-		this.props.model.toggleAll(checked);
+	deleteTodo(todo) {
+		this.todos = this.todos.filter(other => other !== todo);
+		this.save();
 	}
 
-	toggle(todoToToggle) {
-		this.props.model.toggle(todoToToggle);
-	}
+	toggleAll(completed) {
+		for(let todo of this.todos)
+			todo.completed = completed;
 
-	destroy(todo) {
-		this.props.model.destroy(todo);
-	}
-
-	edit(todo) {
-		this.setState({editing: todo.id});
-	}
-
-	save(todoToSave, text) {
-		this.props.model.save(todoToSave, text);
-		this.setState({editing: null});
-	}
-
-	cancel() {
-		this.setState({editing: null});
+		this.save();
 	}
 
 	clearCompleted() {
-		this.props.model.clearCompleted();
+		this.todos = this.todos.filter(todo => !todo.completed);
+		this.save();
 	}
 
-	refresh() {
-
-
-		super.refresh();
+	save() {
+		localStorage.setItem(storageKey, JSON.stringify(this.todos));
+		this.refresh();
 	}
 }
-
-
 
 customElements.define('todo-app', todoApp);

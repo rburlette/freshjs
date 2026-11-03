@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<title>FreshJS tests</title>
+	<style>
+		body { font: 14px system-ui, sans-serif; margin: 2em; }
+		.pass { color: green; }
+		.fail { color: #c00; font-weight: bold; }
+		#scratch { display: none; }
+	</style>
+</head>
+<body>
+	<h1>FreshJS tests</h1>
+	<p>Serve this folder with any static web server and open this page. No install needed.</p>
+	<ol id="results"></ol>
+	<div id="scratch"></div>
+	<script type="module">
+		import {freshElement} from './fresh.js';
+		import * as timecard from './timecard-model.js';
+
+		const results = [];
+		let count = 0;
+
+		// defines a new component with this template and returns an instance on the page
+		function mount(template, setup) {
+			let name = 'test-component-' + (++count);
+			customElements.define(name, class extends freshElement {
+				constructor() {
+					super(template);
+					if(setup)
+						setup.call(this);
+				}
+			});
+			let element = document.createElement(name);
+			document.getElementById('scratch').append(element);
+			return element;
+		}
+
+		function text(element) {
+			return element.shadowRoot.textContent.replace(/\s+/g, ' ').trim();
+		}
+
+		function test(name, run) {
+			try {
+				run();
+				results.push({name, pass: true});
+			} catch(error) {
+				results.push({name, pass: false, message: error.message});
+			}
+		}
+
+		function equal(actual, expected) {
+			if(actual !== expected)
+				throw new Error('expected ' + JSON.stringify(expected) + ' but got ' + JSON.stringify(actual));
+		}
+
+		// errors in custom element constructors and callbacks are usually reported, not thrown, so catch both
+		function throws(run, messagePart) {
+			let caught,
+				listener = event => { caught = event.error; event.preventDefault(); };
+
+			window.addEventListener('error', listener);
+			try {
+				run();
+			} catch(error) {
+				caught = error;
+			} finally {
+				window.removeEventListener('error', listener);
+			}
+
+			if(!caught)
+				throw new Error('expected an error');
+			if(!caught.message.includes(messagePart))
+				throw new Error('error was "' + caught.message + '", expected it to mention "' + messagePart + '"');
+		}
+
+		test('renders when added to the page, without calling refresh()', () => {
+			let element = mount('<h2>{{this.name}}</h2>', function() { this.name = 'Windstorm'; });
+			equal(text(element), 'Windstorm');
+		});
+
+		test('refresh() updates text', () => {
+			let element = mount('<p>Count: {{this.count}}</p>', function() { this.count = 1; });
+			element.count = 2;
+			element.refresh();
+			equal(text(element), 'Count: 2');
+		});
+
+		test('several bindings in one piece of text', () => {
+			let element = mount('<p>a{{1}}b{{this.x}}c{{null}}d</p>', function() { this.x = 2; });
+			equal(text(element), 'a1b2cd');
+		});
+
+		// splitting "Hi {{name}}, " into pieces must not throw off where later bindings point
+		test('bindings after split text land on the right elements', () => {
+			let element = mount('<p>Hi {{this.a}}, <i>one</i><b [title]="this.tip">two</b><u>three</u></p>',
+				function() { this.a = 'A'; this.tip = 'tip'; });
+			equal(text(element), 'Hi A, onetwothree');
+			equal(element.shadowRoot.querySelector('b').getAttribute('title'), 'tip');
+			equal(element.shadowRoot.querySelector('u').hasAttribute('title'), false);
+		});
+
+		test('a handler after split text is bound', () => {
+			let element = mount('<li>{{this.name}} <button [.onclick]="() => this.clicked = true">x</button></li>', function() { this.name = 'row'; });
+			element.shadowRoot.querySelector('button').click();
+			equal(element.clicked, true);
+		});
+
+		test('null and undefined render as empty text', () => {
+			let element = mount('<p>[{{this.missing}}][{{null}}]</p>');
+			equal(text(element), '[][]');
+		});
+
+		test('text is never parsed as HTML', () => {
+			let element = mount('<p>{{this.html}}</p>', function() { this.html = '<img src=x onerror=alert(1)>'; });
+			equal(element.shadowRoot.querySelector('img'), null);
+			equal(text(element), '<img src=x onerror=alert(1)>');
+		});
+
+		test('[attribute] sets, and null removes', () => {
+			let element = mount('<a [title]="this.tip">x</a>', function() { this.tip = 'hello'; });
+			let link = element.shadowRoot.querySelector('a');
+			equal(link.getAttribute('title'), 'hello');
+			element.tip = null;
+			element.refresh();
+			equal(link.hasAttribute('title'), false);
+		});
+
+		test('[disabled]="false" removes boolean attributes, aria-* keeps "false"', () => {
+			let element = mount('<button [disabled]="this.busy" [aria-pressed]="this.busy">x</button>', function() { this.busy = true; });
+			let button = element.shadowRoot.querySelector('button');
+			equal(button.disabled, true);
+			element.busy = false;
+			element.refresh();
+			equal(button.disabled, false);
+			equal(button.getAttribute('aria-pressed'), 'false');
+		});
+
+		test('[.property] sets DOM properties, [.kebab-case] for camelCase names', () => {
+			let element = mount('<p [.text-content]="this.message"></p>', function() { this.message = 'hi'; });
+			equal(element.shadowRoot.querySelector('p').textContent, 'hi');
+		});
+
+		test('list click handlers use the current item after the list changes', () => {
+			let element = mount('<button fjs-for="letter in this.letters" [.onclick]="() => this.clicked = letter">{{letter}}</button>',
+				function() { this.letters = ['a', 'b', 'c']; });
+			element.letters = ['b', 'c'];
+			element.refresh();
+			element.shadowRoot.querySelector('button').click();
+			equal(element.clicked, 'b');
+		});
+
+		test('[.onclick]="this.method" runs with this as the component', () => {
+			let element = mount('<button [.onclick]="this.save">save</button>', function() {
+				this.save = function() { this.saved = true; };
+			});
+			element.shadowRoot.querySelector('button').click();
+			equal(element.saved, true);
+		});
+
+		test('an input the user typed into can be cleared from data', () => {
+			let element = mount('<input [.value]="this.text" [.oninput]="e => this.text = e.target.value">', function() { this.text = ''; });
+			let input = element.shadowRoot.querySelector('input');
+			input.value = 'hello';
+			input.dispatchEvent(new Event('input'));
+			equal(element.text, 'hello');
+			element.text = '';
+			element.refresh();
+			equal(input.value, '');
+		});
+
+		test('a checkbox the user clicked follows data again', () => {
+			let element = mount('<input type="checkbox" [.checked]="this.done">', function() { this.done = false; });
+			let box = element.shadowRoot.querySelector('input');
+			box.click();
+			element.refresh();
+			equal(box.checked, false);
+		});
+
+		test('fjs-if shows and hides', () => {
+			let element = mount('<p fjs-if="this.show">shown</p> <p>always</p>', function() { this.show = false; });
+			equal(text(element), 'always');
+			element.show = true;
+			element.refresh();
+			equal(text(element), 'shown always');
+			element.show = false;
+			element.refresh();
+			equal(text(element), 'always');
+		});
+
+		test('fjs-for repeats, grows and shrinks', () => {
+			let element = mount('<li fjs-for="n in this.numbers">{{n}}:{{index}} </li>', function() { this.numbers = [10, 20]; });
+			equal(text(element), '10:0 20:1');
+			element.numbers = [10, 20, 30];
+			element.refresh();
+			equal(text(element), '10:0 20:1 30:2');
+			element.numbers = [5];
+			element.refresh();
+			equal(text(element), '5:0');
+		});
+
+		test('fjs-for without a name uses item', () => {
+			let element = mount('<li fjs-for="this.numbers">{{item}}</li>', function() { this.numbers = [1, 2]; });
+			equal(text(element), '12');
+		});
+
+		test('fjs-for over null or undefined shows nothing', () => {
+			let element = mount('<li fjs-for="row in this.rows">{{row}}</li><p>ok</p>');
+			equal(text(element), 'ok');
+		});
+
+		test('nested loops can use the outer loop variable', () => {
+			let element = mount('<div fjs-for="group in this.groups"><span fjs-for="row in group.rows">{{group.name}}-{{row}} </span></div>',
+				function() { this.groups = [{name: 'A', rows: [1, 2]}, {name: 'B', rows: [3]}]; });
+			equal(text(element), 'A-1 A-2 B-3');
+		});
+
+		test('fjs-if inside fjs-for sees the row', () => {
+			let element = mount('<li fjs-for="n in this.numbers"><b fjs-if="n > 1">{{n}}</b></li>', function() { this.numbers = [1, 2, 3]; });
+			equal(text(element), '23');
+		});
+
+		test('<select> value is set after its <option>s exist', () => {
+			let element = mount('<select [.value]="this.picked"><option fjs-for="o in this.options" [.value]="o">{{o}}</option></select>',
+				function() { this.options = ['a', 'b', 'c']; this.picked = 'b'; });
+			equal(element.shadowRoot.querySelector('select').value, 'b');
+		});
+
+		test('child components get properties, render once, and refresh with their parent', () => {
+			let renders = 0;
+			customElements.define('test-child', class extends freshElement {
+				constructor() { super('<b>{{this.label}}</b>'); }
+				refresh() { renders++; super.refresh(); }
+			});
+			let parent = mount('<test-child [.label]="this.name"></test-child>', function() { this.name = 'hi'; });
+			let child = parent.shadowRoot.querySelector('test-child');
+			equal(text(child), 'hi');
+			equal(renders, 1);
+			parent.name = 'bye';
+			parent.refresh();
+			equal(text(child), 'bye');
+			equal(renders, 2);
+		});
+
+		test('child components inside lists get their row before rendering', () => {
+			customElements.define('test-row', class extends freshElement {
+				constructor() { super('{{this.row.name}}'); }
+			});
+			let element = mount('<test-row fjs-for="r in this.rows" [.row]="r"></test-row>', function() { this.rows = [{name: 'x'}, {name: 'y'}]; });
+			equal([...element.shadowRoot.querySelectorAll('test-row')].map(text).join(), 'x,y');
+		});
+
+		test('functions passed to child components run with the parent as this', () => {
+			customElements.define('test-button', class extends freshElement {
+				constructor() { super('<button [.onclick]="() => this.onPress()">go</button>'); }
+			});
+			let element = mount('<test-button [.on-press]="this.pressed"></test-button>', function() {
+				this.pressed = function() { this.wasPressed = true; };
+			});
+			element.shadowRoot.querySelector('test-button').shadowRoot.querySelector('button').click();
+			equal(element.wasPressed, true);
+		});
+
+		test('javascript: URLs are blocked in [href] and [src]', () => {
+			let element = mount('<a [href]="this.url">x</a><a [.href]="this.url">y</a>', function() { this.url = ' JavaScript:alert(1)'; });
+			let links = element.shadowRoot.querySelectorAll('a');
+			equal(links[0].getAttribute('href').startsWith('unsafe:'), true);
+			equal(links[1].href.startsWith('unsafe:'), true);
+		});
+
+		test('normal URLs are left alone', () => {
+			let element = mount('<a [href]="this.url">x</a>', function() { this.url = '/todos?filter=active'; });
+			equal(element.shadowRoot.querySelector('a').getAttribute('href'), '/todos?filter=active');
+		});
+
+		test('[onclick] attribute bindings are refused', () => {
+			throws(() => mount('<button [onclick]="this.code">x</button>'), '[.onclick]');
+		});
+
+		test('a template that changes between instances is refused', () => {
+			let name = 'test-changing-template';
+			customElements.define(name, class extends freshElement {
+				constructor() { super('<p>' + (++count) + '</p>'); }
+			});
+			document.createElement(name);
+			throws(() => document.createElement(name), 'same template');
+		});
+
+		test('syntax errors name the component and the expression', () => {
+			throws(() => mount('<p>{{this.name +}}</p>'), '"this.name +"');
+		});
+
+		test('runtime errors name the component and the expression', () => {
+			throws(() => mount('<p>{{this.missing.name}}</p>'), '<test-component-' + (count + 1) + '> error in "this.missing.name"');
+		});
+
+		test('fjs-if and fjs-for on the same element are refused', () => {
+			throws(() => mount('<p fjs-if="true" fjs-for="this.rows">x</p>'), 'separate elements');
+		});
+
+		// The timecard example's rules are plain functions, so they can be tested without rendering anything.
+		// Each test starts from a fresh copy of the sample week.
+		function clock(date) {
+			return date.toTimeString().slice(0, 5);
+		}
+
+		function sampleShift(dayName) {
+			let day = timecard.createSampleWeek().find(day => day.name === dayName);
+			return {day, shift: day.shifts[0]};
+		}
+
+		test('timecard: the sample week and its time list', () => {
+			let {day, shift} = sampleShift('Monday');
+			equal(shift.duration, 5.75);
+			equal(day.times.length, 97);
+			equal(day.times[0].text, '12:00 AM');
+			equal(day.times[48].text, '12:00 PM');
+			equal(day.times[96].text, 'End of Day');
+		});
+
+		test('timecard: + lengthens a service and moves the ones after it', () => {
+			let {shift} = sampleShift('Monday');
+			timecard.addTime(shift, shift.jobs[0], 15);
+			equal(shift.jobs[0].duration, 1.75);
+			equal(clock(shift.jobs[1].in), '05:00');
+			equal(shift.duration, 6);
+		});
+
+		test('timecard: - stops at zero hours', () => {
+			let {shift} = sampleShift('Wednesday');
+			timecard.addTime(shift, shift.jobs[0], -90);
+			equal(shift.jobs[0].duration, 0);
+			equal(shift.duration, 0);
+		});
+
+		test('timecard: changing In moves the whole shift', () => {
+			let {shift} = sampleShift('Monday');
+			timecard.changeShiftIn(shift, new Date(2018, 4, 2, 2, 0));
+			equal(clock(shift.in) + '-' + clock(shift.out), '02:00-07:45');
+			equal(shift.duration, 5.75);
+		});
+
+		test('timecard: a shift moved past midnight ends at End of Day', () => {
+			let {shift} = sampleShift('Sunday');
+			timecard.changeShiftIn(shift, new Date(2018, 4, 1, 23, 0));
+			equal(shift.out.getTime(), shift.maxTime.getTime());
+			equal(shift.jobs.map(job => job.duration).join(), '0,1');
+		});
+
+		test('timecard: an earlier Out takes time from Companion first', () => {
+			let {shift} = sampleShift('Thursday');
+			timecard.changeShiftOut(shift, new Date(2018, 4, 5, 4, 0));
+			equal(shift.jobs.map(job => job.duration).join(), '0,0.75');
+			equal(clock(shift.out), '04:00');
+		});
+
+		test('timecard: a service can switch only to services the shift does not have', () => {
+			let {shift} = sampleShift('Sunday');
+			equal(timecard.getRemainingServices(shift).map(service => service.name).join(), 'Personal Care');
+			equal(timecard.getRemainingServices(shift, shift.jobs[0]).map(service => service.name).join(), 'Companion,Personal Care');
+		});
+
+		test('timecard: Add Service adds an hour of an unused service at the end', () => {
+			let {shift} = sampleShift('Sunday');
+			timecard.addService(shift);
+			let job = shift.jobs[2];
+			equal(job.service + ' ' + clock(job.in) + '-' + clock(job.out) + ' ' + job.isNew, '3 06:00-07:00 true');
+			equal(shift.duration, 3.75);
+		});
+
+		test('timecard: Add New Shift starts an hour after the last shift ends', () => {
+			let {day} = sampleShift('Friday');
+			timecard.addShift(day);
+			let shift = day.shifts[1];
+			equal(clock(shift.in) + '-' + clock(shift.out) + ' ' + shift.isNew, '05:45-06:45 true');
+		});
+
+		let list = document.getElementById('results');
+		for(let result of results) {
+			let item = document.createElement('li');
+			item.className = result.pass ? 'pass' : 'fail';
+			item.textContent = (result.pass ? 'pass: ' : 'FAIL: ') + result.name + (result.pass ? '' : ' (' + result.message + ')');
+			list.append(item);
+		}
+		let failed = results.filter(result => !result.pass).length;
+		document.title = failed ? failed + ' failed' : 'all ' + results.length + ' passed';
+		window.testResults = results;
+	</script>
+</body>
+</html>
