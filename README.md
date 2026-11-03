@@ -53,7 +53,7 @@ This example recreates the Hero Editor component in the Angular tutorial. Put `<
 | `[title]="this.tip"` | Sets an attribute. `null`, `undefined` and `false` remove it, and `true` adds it with no value, so `[disabled]="this.busy"` works. |
 | `[.value]="this.name"` | Sets a DOM property. |
 | `(click)="this.save()"` | Runs when the element fires the event, then refreshes the component. `event` is the event: `(input)="this.name = event.target.value"`. If the expression is a function, such as `(click)="this.save"`, it is called with the event. |
-| `fjs-if="this.visible"` | Adds or removes the element. |
+| `fjs-if="this.visible"` | Adds or removes the element. A removed element is kept, with any components in it, and comes back as it was, refreshed. |
 | `fjs-for="todo in this.todos"` | Repeats the element for each item. `index` is the item's position. Without a name, the item is called `item`. |
 | `fjs-key="todo.id"` | On an `fjs-for` element, keeps each item on its own row. See [Lists](#lists). |
 
@@ -66,6 +66,7 @@ HTML lowercases attribute names, but FreshJS still finds the element's real prop
 * After an `(event)` binding runs, the component whose template it is in refreshes. If the expression returns a promise, as an `async` method does, it refreshes again when the promise resolves.
 * When a child sends an event with `this.emit('delete')`, the parent's `(delete)="..."` binding is in the parent's template, so the parent refreshes.
 * Refreshing a component refreshes the child components in its template too, after their properties are set. Only values that changed touch the page.
+* A refresh runs every expression in the template, then changes only what differs. So keep expressions quick: for example, make a date formatter once, not in each call.
 * Call `this.refresh()` yourself after other changes: in a timer, in a listener you added with `addEventListener`, after a promise you didn't return, or when the page has to update in the middle of a handler (for example, to focus an input you just showed).
 * Call `this.refreshAll()` when you change data that components elsewhere on the page also show. It refreshes the top-level component this one is inside, and everything in it.
 
@@ -80,6 +81,7 @@ HTML lowercases attribute names, but FreshJS still finds the element's real prop
 
 * Pass data to child components with properties, and listen for the events they send: `<todo-item [.todo]="todo" (delete)="this.deleteTodo(todo)"></todo-item>`.
 * A child sends an event with `this.emit('delete')`, or `this.emit('delete', value)` to include a value, which the parent reads as `event.detail`. It is an ordinary DOM event, so components that aren't built with FreshJS can listen too.
+* A binding sets a property only when its value changes, and then a setter can react to it. To react to several properties, or to data from outside such as who is signed in, override `refresh()`: check what changed, then call `super.refresh()`.
 * Template expressions can use `this` and global names, but not the imports in your module. To use an imported function, call it from a component method.
 * Import a child component at the top of the parent's file, so it is defined before the parent uses it.
 * The usual web component lifecycle callbacks work. If you override `connectedCallback`, call `super.connectedCallback()`.
